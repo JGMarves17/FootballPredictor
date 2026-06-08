@@ -1,0 +1,6 @@
+com\josegabrielmarves\footballpredictor\main\Main.class
+main\java\com\josegabrielmarves\footballpredictor\api\OddsApiClient.class
+com\josegabrielmarves\footballpredictor\ui\MainWindow.class
+main\java\com\josegabrielmarves\footballpredictor\api\StatsApiClient.class
+com\josegabrielmarves\footballpredictor\api\FootballDataClient.class
+com\josegabrielmarves\footballpredictor\model\Match.class
