@@ -71,7 +71,12 @@ public final class CalibratedEloRatings {
             Map.entry("haiti", 1481.0),
             Map.entry("el-salvador", 1370.0),
             Map.entry("trinidad-and-tobago", 1360.0),
-            Map.entry("guatemala", 1345.0)
+            Map.entry("guatemala", 1345.0),
+            // Agregados 10-jun-2026: convertidos de eloratings.net (offset -49, n=17 anclas)
+            Map.entry("turkey", 1830.0),
+            Map.entry("sweden", 1665.0),
+            Map.entry("austria", 1780.0),
+            Map.entry("curacao", 1520.0)  // ESTIMADO: interpolado entre pares CONCACAF
     );
 
     private CalibratedEloRatings() {
