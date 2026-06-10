@@ -4,15 +4,16 @@ import com.josegabrielmarves.footballpredictor.model.Score;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 
 /**
- * Modelo Poisson: convierte ratings Elo en distribuciones de marcadores.
+ * Modelo Poisson con corrección Dixon-Coles: convierte ratings Elo en
+ * distribuciones de marcadores.
  *
- * Puente Elo→goles esperados portado del modelo de referencia open-source
- * (MIT) github.com/Hicruben/world-cup-2026-prediction-model, validado por
- * backtest walk-forward sobre 920 internacionales (2023-2026).
+ * Puente Elo→goles esperados y parámetros portados del modelo de referencia
+ * open-source (MIT) github.com/Hicruben/world-cup-2026-prediction-model,
+ * validado por backtest walk-forward sobre 920 internacionales (2023-2026).
  *
- * NOTA Fase 4: este modelo Poisson independiente subestima los empates de
- * pocos goles (0-0, 1-1). La corrección Dixon-Coles (rho = -0.13) se
- * insertará en {@link #scoreMatrix} multiplicando cada celda por tau(a,b).
+ * Fase 4 (implementada): la corrección Dixon-Coles (DC_RHO = -0.13) ajusta
+ * la dependencia entre marcadores bajos que el Poisson independiente modela
+ * mal — sube 0-0 y 1-1, baja 1-0 y 0-1. Ver {@link #scoreMatrix}.
  *
  * Sin estado: todos los métodos son puros.
  */
@@ -24,8 +25,19 @@ public final class PoissonPredictor {
     public static final double MIN_LAMBDA = 0.3;
     /** Máximo de goles esperados (evita goleadas irreales). */
     public static final double MAX_LAMBDA = 3.5;
-    /** Marcador máximo considerado por lado (0..8 cubre >99.9% de la masa). */
+    /**
+     * Marcador máximo por lado. Cobertura P(X<=8): >99.9% para lambdas
+     * reales (<=2.8 con los ratings actuales); 99.0% en el clamp teórico
+     * 3.5. La matriz se renormaliza, así que el residuo solo redistribuye
+     * masa (verificado por QA, 10-jun-2026).
+     */
     public static final int MAX_GOALS = 8;
+    /**
+     * Corrección Dixon-Coles (rho calibrado por la referencia MIT):
+     * ajusta la dependencia entre marcadores bajos que el Poisson
+     * independiente modela mal (sube 0-0 y 1-1, baja 1-0 y 0-1).
+     */
+    public static final double DC_RHO = -0.13;
 
     private PoissonPredictor() {
         // Clase utilitaria: no instanciable.
@@ -58,10 +70,14 @@ public final class PoissonPredictor {
 
     /**
      * Matriz de probabilidades de marcadores [golesLocal][golesVisitante],
-     * tamaño (MAX_GOALS+1) x (MAX_GOALS+1), normalizada para sumar 1.
+     * tamaño (MAX_GOALS+1) x (MAX_GOALS+1), con corrección Dixon-Coles
+     * aplicada y normalizada para sumar 1.
      *
      * Convención de la referencia: el bonus del local entra completo a su
      * lambda y como -homeBonus/2 a la del visitante.
+     *
+     * IMPORTANTE: pasar ratings BASE (sin bonus pre-aplicado); el bonus se
+     * aplica internamente una sola vez.
      *
      * @param homeBonus puntos Elo de ventaja del local
      *                  (0 = cancha neutral; EloCalculator.HOME_ADVANTAGE = 75
@@ -76,8 +92,7 @@ public final class PoissonPredictor {
         for (int h = 0; h <= MAX_GOALS; h++) {
             double pH = poissonPmf(h, lambdaHome);
             for (int a = 0; a <= MAX_GOALS; a++) {
-                // Punto de inserción Fase 4: multiplicar por dcTau(h, a, lambdas, rho)
-                double p = pH * poissonPmf(a, lambdaAway);
+                double p = pH * poissonPmf(a, lambdaAway) * dcTau(h, a, lambdaHome, lambdaAway);
                 matrix[h][a] = p;
                 total += p;
             }
@@ -119,6 +134,19 @@ public final class PoissonPredictor {
             }
         }
         return new MatchProbabilities(win, draw, loss);
+    }
+
+    /**
+     * Factor de corrección Dixon-Coles tau(h,a). Solo difiere de 1.0 en las
+     * cuatro celdas de marcadores bajos. Seguro con los clamps de lambda:
+     * con MAX_LAMBDA=3.5 y DC_RHO=-0.13, tau nunca baja de ~0.55.
+     */
+    private static double dcTau(int h, int a, double lambdaH, double lambdaA) {
+        if (h == 0 && a == 0) return 1 - lambdaH * lambdaA * DC_RHO;
+        if (h == 0 && a == 1) return 1 + lambdaH * DC_RHO;
+        if (h == 1 && a == 0) return 1 + lambdaA * DC_RHO;
+        if (h == 1 && a == 1) return 1 - DC_RHO;
+        return 1.0;
     }
 
     /** Probabilidades de victoria local / empate / victoria visitante. */
