@@ -26,10 +26,10 @@ public final class PoissonPredictor {
     /** Máximo de goles esperados (evita goleadas irreales). */
     public static final double MAX_LAMBDA = 3.5;
     /**
-     * Marcador máximo por lado. Cobertura P(X<=8): >99.9% para lambdas
-     * reales (<=2.8 con los ratings actuales); 99.0% en el clamp teórico
-     * 3.5. La matriz se renormaliza, así que el residuo solo redistribuye
-     * masa (verificado por QA, 10-jun-2026).
+     * Marcador máximo por lado. Cobertura P(X<=8): >99.7% para lambdas
+     * reales (<=2.8 con los ratings actuales); 99.0% en el peor caso
+     * (clamp 3.5). La matriz se renormaliza, así que el residuo solo
+     * redistribuye masa (medido y verificado por test, 10-jun-2026).
      */
     public static final int MAX_GOALS = 8;
     /**
