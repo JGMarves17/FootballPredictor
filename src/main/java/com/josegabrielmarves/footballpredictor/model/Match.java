@@ -10,6 +10,7 @@ public class Match {
     public String awayTeam;
     public String date;
     public String status;
+    public String group;   // "Group A"…"Group L"; null en eliminatorias
     public Score score;
     public String winner;
 

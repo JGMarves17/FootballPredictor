@@ -65,7 +65,11 @@ public class OpenFootballProvider implements DataProvider {
                     }
                 }
 
-                matches.add(new Match(id++, team1, team2, date, round, score, winner));
+                String group = m.has("group") && !m.get("group").isJsonNull()
+                        ? m.get("group").getAsString() : null;
+                Match match = new Match(id++, team1, team2, date, round, score, winner);
+                match.group = group;
+                matches.add(match);
             }
 
         } catch (Exception e) {
