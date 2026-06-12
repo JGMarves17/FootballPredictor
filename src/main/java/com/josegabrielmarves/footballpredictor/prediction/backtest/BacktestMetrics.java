@@ -3,7 +3,6 @@ package com.josegabrielmarves.footballpredictor.prediction.backtest;
 import com.josegabrielmarves.footballpredictor.model.Score;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
 
-
 /**
  * Acumulador de métricas de calibración para backtesting (Fase 5a).
  *
@@ -17,6 +16,13 @@ import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredict
  * exactamente 2/3 ≈ 0.667. El valor de la referencia
  * (Hicruben/world-cup-2026-prediction-model, ~0.54) usa esta misma escala;
  * NO comparar contra Brier binario [0, 1].
+ *
+ * <p><b>Convención del RPS — Ranked Probability Score:</b>
+ * RPS = 0.5 × [(P(H)−Y(H))² + (P(H)+P(D)−Y(H)−Y(D))²].
+ * Métrica proper para resultados ORDENADOS (HOME &gt; DRAW &gt; AWAY).
+ * Rango [0, 1]; perfecto = 0; predicción inversa extrema = 1.
+ * Uniforme NO es constante: depende de la distribución de resultados del dataset.
+ * Usada como métrica principal por la referencia (Hicruben).
  */
 public final class BacktestMetrics {
 
@@ -42,6 +48,7 @@ public final class BacktestMetrics {
     private int correct;
     private double brierSum;
     private double logLossSum;
+    private double rpsSum;
 
     /**
      * Registra un partido: probabilidades predichas + resultado real.
@@ -65,6 +72,8 @@ public final class BacktestMetrics {
         brierSum += sq(homeWin - oHome) + sq(draw - oDraw) + sq(awayWin - oAway);
 
         logLossSum += -Math.log(Math.max(pActual, EPSILON));
+
+        rpsSum += 0.5 * (sq(homeWin - oHome) + sq(homeWin + draw - oHome - oDraw));
 
         matches++;
     }
@@ -94,6 +103,17 @@ public final class BacktestMetrics {
     public double logLoss() {
         requireMatches();
         return logLossSum / matches;
+    }
+
+    /**
+     * Ranked Probability Score (RPS) promedio para resultados ordenados (HOME > DRAW > AWAY).
+     * Rango [0, 1]; perfecto = 0; predicción inversa extrema (HOME↔AWAY) = 1.
+     * Uniforme NO es constante: depende de la distribución de outcomes del dataset.
+     * Referencia (Hicruben, ~763 partidos): reportado como métrica principal.
+     */
+    public double rps() {
+        requireMatches();
+        return rpsSum / matches;
     }
 
     /** Número de partidos registrados. */
