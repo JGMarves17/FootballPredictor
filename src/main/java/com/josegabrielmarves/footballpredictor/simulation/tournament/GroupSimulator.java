@@ -85,7 +85,7 @@ public final class GroupSimulator {
      * acumulativo. Equivalente a MonteCarloSimulator.sample pero con el
      * RNG externo del simulador (necesario para reproducibilidad seedable).
      */
-    static Score sampleScore(double[][] matrix, Random rng) {
+    public static Score sampleScore(double[][] matrix, Random rng) {
         double r = rng.nextDouble();
         double cum = 0.0;
         for (int h = 0; h < matrix.length; h++) {
