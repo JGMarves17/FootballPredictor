@@ -7,6 +7,7 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer;
+import com.josegabrielmarves.footballpredictor.quiniela.StageDetector;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -136,7 +137,8 @@ public class MainWindow extends JFrame {
                     // Predicción honesta (modal de la matriz)
                     var honest  = MatchEV.honest(home, away, bonus);
                     // Predicción óptima (máximo EV de puntos)
-                    var optimal = MatchEV.best(home, away, bonus, QuinielaScorer.Stage.GRUPOS);
+                    QuinielaScorer.Stage stage = StageDetector.detect(m);
+                    var optimal = MatchEV.best(home, away, bonus, stage);
 
                     String honestStr  = honest.homeGoals() + "-" + honest.awayGoals();
                     String optimalStr = optimal.score().homeGoals() + "-"
