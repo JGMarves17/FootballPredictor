@@ -35,9 +35,10 @@ public final class MetaSimulator {
      */
     public record MetaResult(
             double p1st, double p2nd, double p3rd, double pPodio,
-            double expectedPosition, int simulations) {
+            double expectedPosition, int simulations, int participants) {
 
         public void print() {
+            double base = 3.0 / participants;
             System.out.printf(
                     "%n=== Meta Simulator — torneo completo (%,d simulaciones) ===%n" +
                             "  P(1°)    = %5.1f%%%n" +
@@ -45,13 +46,13 @@ public final class MetaSimulator {
                             "  P(3°)    = %5.1f%%%n" +
                             "  ─────────────────────%n" +
                             "  P(podio) = %5.1f%%%n" +
-                            "  Posición esperada = %.2f / 14%n" +
-                            "  Base sin modelo  ≈ 21.4%% (3/14)%n" +
+                            "  Posición esperada = %.2f / %d%n" +
+                            "  Base sin modelo  ≈ %.1f%% (3/%d)%n" +
                             "  Ventaja del modelo: %+.1f%%%n",
                     simulations,
                     p1st*100, p2nd*100, p3rd*100, pPodio*100,
-                    expectedPosition,
-                    (pPodio - 3.0/14.0)*100);
+                    expectedPosition, participants, base*100, participants,
+                    (pPodio - base)*100);
         }
     }
 
@@ -76,7 +77,7 @@ public final class MetaSimulator {
             int simulations, long seed) {
 
         Random rng = new Random(seed);
-        int[] posCount = new int[14];
+        int[] posCount = new int[currentStandings.size()];
         long posSum = 0;
 
         for (int sim = 0; sim < simulations; sim++) {
@@ -137,6 +138,6 @@ public final class MetaSimulator {
         double p2 = (double) posCount[1] / simulations;
         double p3 = (double) posCount[2] / simulations;
         return new MetaResult(p1, p2, p3, p1+p2+p3,
-                (double) posSum / simulations, simulations);
+                (double) posSum / simulations, simulations, currentStandings.size());
     }
 }

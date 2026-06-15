@@ -115,12 +115,12 @@ public final class QuinielaRunner {
 
         // ── 8. Clasificación proyectada ───────────────────────────────────────
         System.out.println("\n--- Clasificación proyectada con predicciones óptimas ---");
-        // StandingsSimulator ya corrió internamente — mostrar el resultado
-        System.out.printf("  P(podio) = %.1f%%  |  Posición esperada = %.2f / 14%n",
-                optimal.pPodio()*100, optimal.expectedPosition());
-        System.out.printf("  Base sin modelo ≈ 21.4%% (3/14)  |  " +
-                        "Ventaja del modelo: +%.1f%%%n",
-                (optimal.pPodio() - 3.0/14.0)*100);
+        int n = optimal.participants();
+        System.out.printf("  EV de premio = %.1f%% del pozo  |  P(podio) = %.1f%%  |  " +
+                        "Posición esperada = %.2f / %d%n",
+                optimal.expectedPayout()*100, optimal.pPodio()*100, optimal.expectedPosition(), n);
+        System.out.printf("  Base sin modelo ≈ %.1f%% (3/%d)  |  Ventaja del modelo: +%.1f%%%n",
+                100.0*3.0/n, n, (optimal.pPodio() - 3.0/n)*100);
     }
 
     /** Aplica un resultado real al mapa de ratings. */

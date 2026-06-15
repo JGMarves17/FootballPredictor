@@ -59,27 +59,29 @@ public final class StandingsSimulator {
      */
     public record StandingsResult(
             double p1st, double p2nd, double p3rd, double pPodio,
-            double expectedPosition, int simulations) {
+            double expectedPosition, int simulations, int participants) {
 
         public void print() {
+            double base = 100.0 * 3.0 / participants;
             System.out.printf(
-                    "%n=== Clasificación simulada (%,d iteraciones, 14 participantes) ===%n" +
+                    "%n=== Clasificación simulada (%,d iteraciones, %d participantes) ===%n" +
                             "  P(1°)    = %5.1f%%%n" +
                             "  P(2°)    = %5.1f%%%n" +
                             "  P(3°)    = %5.1f%%%n" +
                             "  ─────────────────%n" +
                             "  P(podio) = %5.1f%%%n" +
-                            "  Posición esperada = %.2f / 14%n" +
-                            "  Base sin modelo  ≈ 21.4%% (3/14)%n",
-                    simulations,
-                    p1st*100, p2nd*100, p3rd*100, pPodio*100, expectedPosition);
+                            "  Posición esperada = %.2f / %d%n" +
+                            "  Base sin modelo  ≈ %.1f%% (3/%d)%n",
+                    simulations, participants,
+                    p1st*100, p2nd*100, p3rd*100, pPodio*100,
+                    expectedPosition, participants, base, participants);
         }
     }
 
     /**
      * Corre la simulación de clasificación.
      *
-     * @param currentPoints puntos actuales de los 14 participantes;
+     * @param currentPoints puntos actuales de todos los participantes;
      *                      incluir {@value #US} como clave para nosotros
      * @param jornada       partidos de la jornada con nuestras predicciones
      * @param rivalProfiles 13 perfiles de rivales (nombres = claves en currentPoints)
@@ -95,7 +97,7 @@ public final class StandingsSimulator {
             int simulations, long seed) {
 
         Random rng = new Random(seed);
-        int[] posCount = new int[14];
+        int[] posCount = new int[currentPoints.size()];
         long posSum = 0;
 
         // Precalcular nuestras predicciones
@@ -135,7 +137,7 @@ public final class StandingsSimulator {
         double p2 = (double) posCount[1] / simulations;
         double p3 = (double) posCount[2] / simulations;
         return new StandingsResult(p1, p2, p3, p1+p2+p3,
-                (double) posSum / simulations, simulations);
+                (double) posSum / simulations, simulations, currentPoints.size());
     }
 
     /** Calcula los puntos de quiniela para una lista de predicciones vs resultados reales. */

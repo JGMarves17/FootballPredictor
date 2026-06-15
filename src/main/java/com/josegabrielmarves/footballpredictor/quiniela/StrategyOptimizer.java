@@ -15,13 +15,14 @@ import java.util.*;
  * Optimizador de estrategia para una jornada completa (Fase 10).
  *
  * A diferencia de MatchEV (Fase 8, que maximiza EV por partido individual),
- * StrategyOptimizer maximiza P(podio) considerando:
+ * StrategyOptimizer maximiza el VALOR ESPERADO del premio (1º=60%, 2º=30%,
+ * 3º=10% del pozo) considerando:
  * - La clasificación actual y la de los rivales.
  * - Los perfiles de predicción de los 13 rivales (Fase 9).
  * - Las combinaciones de predicciones para la jornada completa.
  *
  * Algoritmo: evalúa las top-K candidatos por partido (de MatchEV.rank),
- * genera todas las combinaciones y elige la que maximiza P(podio).
+ * genera todas las combinaciones y elige la que maximiza el EV de premio.
  * Con K=3 y 2 partidos = 9 combinaciones; con 6 partidos = 729.
  */
 public final class StrategyOptimizer {
@@ -38,15 +39,17 @@ public final class StrategyOptimizer {
             double pPodio,
             double p1st, double p2nd, double p3rd,
             double expectedPosition,
+            double expectedPayout,
+            int participants,
             int combinationsEvaluated) {
 
         public void print(List<StrategyMatch> matches) {
             System.out.printf("%n=== Strategy Optimizer — %d combinaciones evaluadas ===%n",
                     combinationsEvaluated);
-            System.out.printf("  P(podio) óptimo = %.1f%%  " +
-                            "(P1°=%.1f%%  P2°=%.1f%%  P3°=%.1f%%)%n",
-                    pPodio*100, p1st*100, p2nd*100, p3rd*100);
-            System.out.printf("  Posición esperada = %.2f / 14%n%n", expectedPosition());
+            System.out.printf("  EV de premio = %.1f%% del pozo  " +
+                            "(P1°=%.1f%%  P2°=%.1f%%  P3°=%.1f%%  →  P(podio)=%.1f%%)%n",
+                    expectedPayout*100, p1st*100, p2nd*100, p3rd*100, pPodio*100);
+            System.out.printf("  Posición esperada = %.2f / %d%n%n", expectedPosition(), participants());
             System.out.println("  Predicciones óptimas:");
             for (int i = 0; i < matches.size(); i++) {
                 StrategyMatch m = matches.get(i);
@@ -59,8 +62,23 @@ public final class StrategyOptimizer {
 
     private StrategyOptimizer() {}
 
+    /** Reparto del pozo de la quiniela: 1º=60%, 2º=30%, 3º=10%. */
+    public static final double PRIZE_1ST = 0.60;
+    public static final double PRIZE_2ND = 0.30;
+    public static final double PRIZE_3RD = 0.10;
+
     /**
-     * Optimiza las predicciones de la jornada para maximizar P(podio).
+     * Valor esperado del premio como fracción del pozo:
+     * 0.60·P(1º) + 0.30·P(2º) + 0.10·P(3º).
+     * Es proporcional al dinero esperado, así que maximizarlo equivale a maximizar
+     * lempiras esperadas sin necesidad de conocer el tamaño del pozo.
+     */
+    public static double expectedPayout(double p1st, double p2nd, double p3rd) {
+        return PRIZE_1ST * p1st + PRIZE_2ND * p2nd + PRIZE_3RD * p3rd;
+    }
+
+    /**
+     * Optimiza las predicciones de la jornada para maximizar el EV de premio.
      *
      * @param matches       partidos de la jornada
      * @param standings     clasificación actual (debe incluir {@link StandingsSimulator#US})
@@ -96,6 +114,7 @@ public final class StrategyOptimizer {
         // Enumerar todas las combinaciones
         List<List<Score>> combos = combinations(candidatesPerMatch);
         OptimizationResult best = null;
+        double bestPayout = -1.0;
 
         for (List<Score> combo : combos) {
             List<JornadaMatch> jornada = new ArrayList<>();
@@ -109,11 +128,14 @@ public final class StrategyOptimizer {
                     standings, jornada, rivals, stage,
                     simPerCombo, seed + Math.abs(combo.hashCode()));
 
-            if (best == null || r.pPodio() > best.pPodio()) {
+            double payout = expectedPayout(r.p1st(), r.p2nd(), r.p3rd());
+
+            if (best == null || payout > bestPayout) {
+                bestPayout = payout;
                 best = new OptimizationResult(
                         new ArrayList<>(combo),
                         r.pPodio(), r.p1st(), r.p2nd(), r.p3rd(),
-                        r.expectedPosition(), combos.size());
+                        r.expectedPosition(), payout, r.participants(), combos.size());
             }
         }
 
