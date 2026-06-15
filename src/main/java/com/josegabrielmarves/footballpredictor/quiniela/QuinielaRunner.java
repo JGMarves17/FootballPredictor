@@ -49,28 +49,51 @@ public final class QuinielaRunner {
         // applyResult(ratings, "TeamA", "TeamB", golesA, golesB, homeBonus);
 
         // ── 3. CLASIFICACIÓN ACTUAL (actualizar cada jornada) ─────────────────
-        // Nombre clave: StandingsSimulator.US = "Nosotros"
+        // Nombre clave: StandingsSimulator.US = "Nosotros" (= Gabriel Marves).
+        // Datos reales de la tabla; actualiza los puntos cada jornada.
         Map<String, Integer> standings = new LinkedHashMap<>();
-        standings.put(StandingsSimulator.US, 1);  // ← nuestros puntos reales
-        // 13 rivales — actualizar nombres y puntos con los del grupo real:
-        for (int i = 1; i <= 13; i++) standings.put("Rival" + i, 0);
+        standings.put(StandingsSimulator.US,  3);  // Gabriel Marves (nosotros)
+        standings.put("Cristhian Brito",     13);
+        standings.put("Ruben Figueroa",      12);
+        standings.put("Rodrigo Lopez",       11);
+        standings.put("Manuel Molina",        8);
+        standings.put("Nissy Rodriguez",      7);
+        standings.put("Daniel Rivera",        6);
+        standings.put("Carlos Guevara",       6);
+        standings.put("Moises Chavarria",     6);
+        standings.put("Jason Avila",          4);
+        standings.put("Hector Cerrato",       3);
+        standings.put("Alfredo Funez",        3);
+        standings.put("Jose Pozadas",         3);
+        standings.put("Daniel Ortiz",         2);
+        standings.put("Luis Flores",          2);
+        standings.put("Carlos Davis",         2);
+        standings.put("Jorge Brand",          0);
 
-        // ── 4. PERFILES DE RIVALES ────────────────────────────────────────────
-        // Ajustar cuando tengas datos reales de cómo predicen
+        // ── 4. PERFILES DE RIVALES (editable) ─────────────────────────────────
+        // Mezcla razonable mientras no sepas cómo predicen de verdad:
+        //   FAVORITE     = "favoritista" (marcador modal del favorito)
+        //   CONSERVATIVE = "intermedio"  (marcadores bajos, 0-2 por lado)
+        //   RANDOM       = "arriesgado"  (marcadores variados)
+        // Cambia el Type de cada quien cuando tengas datos reales; los nombres
+        // DEBEN coincidir con los de la clasificación de arriba.
         List<RivalProfile> rivals = List.of(
-                new RivalProfile("Rival1",  Type.CONSERVATIVE),
-                new RivalProfile("Rival2",  Type.CONSERVATIVE),
-                new RivalProfile("Rival3",  Type.CONSERVATIVE),
-                new RivalProfile("Rival4",  Type.CONSERVATIVE),
-                new RivalProfile("Rival5",  Type.CONSERVATIVE),
-                new RivalProfile("Rival6",  Type.CONSERVATIVE),
-                new RivalProfile("Rival7",  Type.FAVORITE),
-                new RivalProfile("Rival8",  Type.FAVORITE),
-                new RivalProfile("Rival9",  Type.FAVORITE),
-                new RivalProfile("Rival10", Type.FAVORITE),
-                new RivalProfile("Rival11", Type.RANDOM),
-                new RivalProfile("Rival12", Type.RANDOM),
-                new RivalProfile("Rival13", Type.FAN, "Mexico") // ← ajustar favorito
+                new RivalProfile("Cristhian Brito",  Type.FAVORITE),
+                new RivalProfile("Ruben Figueroa",   Type.CONSERVATIVE),
+                new RivalProfile("Rodrigo Lopez",    Type.FAVORITE),
+                new RivalProfile("Manuel Molina",    Type.CONSERVATIVE),
+                new RivalProfile("Nissy Rodriguez",  Type.RANDOM),
+                new RivalProfile("Daniel Rivera",    Type.FAVORITE),
+                new RivalProfile("Carlos Guevara",   Type.CONSERVATIVE),
+                new RivalProfile("Moises Chavarria", Type.RANDOM),
+                new RivalProfile("Jason Avila",      Type.FAVORITE),
+                new RivalProfile("Hector Cerrato",   Type.CONSERVATIVE),
+                new RivalProfile("Alfredo Funez",    Type.RANDOM),
+                new RivalProfile("Jose Pozadas",     Type.CONSERVATIVE),
+                new RivalProfile("Daniel Ortiz",     Type.RANDOM),
+                new RivalProfile("Luis Flores",      Type.FAVORITE),
+                new RivalProfile("Carlos Davis",     Type.CONSERVATIVE),
+                new RivalProfile("Jorge Brand",      Type.RANDOM)
         );
 
         // ── 5. PARTIDOS DE LA JORNADA (actualizar cada jornada) ───────────────

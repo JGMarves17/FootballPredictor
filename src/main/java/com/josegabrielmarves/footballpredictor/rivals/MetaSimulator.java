@@ -1,8 +1,10 @@
 package com.josegabrielmarves.footballpredictor.rivals;
 
 import com.josegabrielmarves.footballpredictor.model.Match;
+import com.josegabrielmarves.footballpredictor.model.Score;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
+import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRanking;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer;
 import com.josegabrielmarves.footballpredictor.quiniela.StageDetector;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
@@ -81,11 +83,15 @@ public final class MetaSimulator {
         long posSum = 0;
 
         for (int sim = 0; sim < simulations; sim++) {
-            Map<String, Integer> totals = new HashMap<>(currentStandings);
+            Map<String, QuinielaRanking.Tally> tallies = new HashMap<>();
+            for (Map.Entry<String, Integer> e : currentStandings.entrySet())
+                tallies.put(e.getKey(), new QuinielaRanking.Tally(e.getValue()));
 
             for (Match m : remainingMatches) {
                 // Stage del partido
                 QuinielaScorer.Stage stage = StageDetector.detect(m);
+                boolean knockout = stage != QuinielaScorer.Stage.GRUPOS;
+                boolean isFinal  = stage == QuinielaScorer.Stage.FINAL;
 
                 // Ratings
                 EloRating home = ratings.getOrDefault(m.homeTeam, EloRating.initial(m.homeTeam));
@@ -104,32 +110,19 @@ public final class MetaSimulator {
                 int[] ourPred = ourPredictions.getOrDefault(key,
                         new int[]{MatchEV.honest(home, away, bonus).homeGoals(),
                                 MatchEV.honest(home, away, bonus).awayGoals()});
-                int ourSign = Integer.compare(ourPred[0], ourPred[1]);
-                boolean ourExact  = ourPred[0] == actual.homeGoals() && ourPred[1] == actual.awayGoals();
-                boolean ourResult = ourSign == actualSign;
-                int ourPts = ourExact ? QuinielaScorer.pointsExact(stage)
-                        : ourResult ? QuinielaScorer.pointsResult(stage) : 0;
-                totals.merge(StandingsSimulator.US, ourPts, Integer::sum);
+                accumulate(tallies.computeIfAbsent(StandingsSimulator.US, k -> new QuinielaRanking.Tally()),
+                        ourPred[0], ourPred[1], actual, actualSign, stage, knockout, isFinal);
 
                 // Predicciones de rivales
                 for (RivalProfile rival : rivalProfiles) {
                     var pred = RivalSimulator.predict(rival, matrix, m.homeTeam, m.awayTeam, rng);
-                    int rSign = Integer.compare(pred.homeGoals(), pred.awayGoals());
-                    boolean rExact  = pred.homeGoals() == actual.homeGoals()
-                            && pred.awayGoals() == actual.awayGoals();
-                    boolean rResult = rSign == actualSign;
-                    int rPts = rExact ? QuinielaScorer.pointsExact(stage)
-                            : rResult ? QuinielaScorer.pointsResult(stage) : 0;
-                    totals.merge(rival.name(), rPts, Integer::sum);
+                    accumulate(tallies.computeIfAbsent(rival.name(), k -> new QuinielaRanking.Tally()),
+                            pred.homeGoals(), pred.awayGoals(), actual, actualSign, stage, knockout, isFinal);
                 }
             }
 
-            // Posición final
-            int ourScore = totals.getOrDefault(StandingsSimulator.US, 0);
-            int pos = 1;
-            for (Map.Entry<String, Integer> e : totals.entrySet()) {
-                if (!e.getKey().equals(StandingsSimulator.US) && e.getValue() > ourScore) pos++;
-            }
+            // Posición final (aplicando desempates)
+            int pos = QuinielaRanking.rankOf(tallies, StandingsSimulator.US);
             posCount[pos - 1]++;
             posSum += pos;
         }
@@ -139,5 +132,20 @@ public final class MetaSimulator {
         double p3 = (double) posCount[2] / simulations;
         return new MetaResult(p1, p2, p3, p1+p2+p3,
                 (double) posSum / simulations, simulations, currentStandings.size());
+    }
+
+    /** Suma puntos y desempates de un partido a la cuenta de un jugador. */
+    private static void accumulate(QuinielaRanking.Tally tally,
+                                   int predHome, int predAway, Score actual, int actualSign,
+                                   QuinielaScorer.Stage stage, boolean knockout, boolean isFinal) {
+        boolean exact  = predHome == actual.homeGoals() && predAway == actual.awayGoals();
+        boolean result = Integer.compare(predHome, predAway) == actualSign;
+        int p = exact ? QuinielaScorer.pointsExact(stage)
+                : result ? QuinielaScorer.pointsResult(stage) : 0;
+        tally.points += p;
+        if (exact)    tally.exactScores++;
+        if (knockout) tally.knockoutPoints += p;
+        if (isFinal)  tally.finalError =
+                Math.abs(predHome - actual.homeGoals()) + Math.abs(predAway - actual.awayGoals());
     }
 }

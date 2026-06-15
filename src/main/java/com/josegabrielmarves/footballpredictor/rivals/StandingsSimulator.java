@@ -1,6 +1,7 @@
 package com.josegabrielmarves.footballpredictor.rivals;
 
 import com.josegabrielmarves.footballpredictor.model.Score;
+import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRanking;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer;
 import com.josegabrielmarves.footballpredictor.simulation.tournament.GroupSimulator;
 
@@ -110,25 +111,27 @@ public final class StandingsSimulator {
             for (int i = 0; i < jornada.size(); i++)
                 actuals[i] = GroupSimulator.sampleScore(jornada.get(i).matrix(), rng);
 
-            // 2. Puntuar todos
-            Map<String, Integer> totals = new HashMap<>();
+            // 2. Acumular puntos + desempates de todos (puntos previos + jornada)
+            Map<String, QuinielaRanking.Tally> tallies = new HashMap<>();
             for (Map.Entry<String, Integer> e : currentPoints.entrySet())
-                totals.put(e.getKey(), e.getValue());
+                tallies.put(e.getKey(), new QuinielaRanking.Tally(e.getValue()));
 
-            // Nuestros puntos de jornada
-            totals.merge(US, calcPoints(actuals, ourPreds, stage), Integer::sum);
+            // Nosotros
+            addContribution(tallies.computeIfAbsent(US, k -> new QuinielaRanking.Tally()),
+                    actuals, ourPreds, stage);
 
-            // Puntos de rivales
+            // Rivales
             for (RivalProfile rival : rivalProfiles) {
                 List<Score> preds = new ArrayList<>();
                 for (JornadaMatch m : jornada)
                     preds.add(RivalSimulator.predict(
                             rival, m.matrix(), m.homeTeam(), m.awayTeam(), rng));
-                totals.merge(rival.name(), calcPoints(actuals, preds, stage), Integer::sum);
+                addContribution(tallies.computeIfAbsent(rival.name(), k -> new QuinielaRanking.Tally()),
+                        actuals, preds, stage);
             }
 
-            // 3. Posición de US
-            int pos = rankOf(totals, US);
+            // 3. Posición de US (aplicando desempates)
+            int pos = QuinielaRanking.rankOf(tallies, US);
             posCount[pos - 1]++;
             posSum += pos;
         }
@@ -140,30 +143,32 @@ public final class StandingsSimulator {
                 (double) posSum / simulations, simulations, currentPoints.size());
     }
 
-    /** Calcula los puntos de quiniela para una lista de predicciones vs resultados reales. */
-    private static int calcPoints(Score[] actuals, List<Score> preds, QuinielaScorer.Stage stage) {
-        int pts = 0;
+    /**
+     * Suma a la cuenta de un jugador los puntos y desempates de la jornada:
+     * puntos totales, marcadores exactos, puntos de eliminatorias y error en la final.
+     */
+    private static void addContribution(QuinielaRanking.Tally tally,
+                                        Score[] actuals, List<Score> preds,
+                                        QuinielaScorer.Stage stage) {
+        boolean knockout = stage != QuinielaScorer.Stage.GRUPOS;
+        boolean isFinal  = stage == QuinielaScorer.Stage.FINAL;
         for (int i = 0; i < actuals.length; i++) {
             Score pred = preds.get(i), actual = actuals[i];
             boolean exact  = pred.homeGoals() == actual.homeGoals()
                     && pred.awayGoals() == actual.awayGoals();
             boolean result = sign(pred) == sign(actual);
-            if (exact)        pts += QuinielaScorer.pointsExact(stage);
-            else if (result)  pts += QuinielaScorer.pointsResult(stage);
+            int p = exact ? QuinielaScorer.pointsExact(stage)
+                    : result ? QuinielaScorer.pointsResult(stage) : 0;
+            tally.points += p;
+            if (exact)    tally.exactScores++;
+            if (knockout) tally.knockoutPoints += p;
+            if (isFinal)  tally.finalError =
+                    Math.abs(pred.homeGoals() - actual.homeGoals())
+                            + Math.abs(pred.awayGoals() - actual.awayGoals());
         }
-        return pts;
     }
 
     private static int sign(Score s) {
         return Integer.compare(s.homeGoals(), s.awayGoals());
-    }
-
-    /** Posición de 'name' en el ranking total (1 = primero). */
-    private static int rankOf(Map<String, Integer> totals, String name) {
-        int score = totals.getOrDefault(name, 0);
-        int pos = 1;
-        for (Map.Entry<String, Integer> e : totals.entrySet())
-            if (!e.getKey().equals(name) && e.getValue() > score) pos++;
-        return pos;
     }
 }

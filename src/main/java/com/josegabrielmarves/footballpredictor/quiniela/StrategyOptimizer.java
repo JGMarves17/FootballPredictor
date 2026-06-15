@@ -124,9 +124,14 @@ public final class StrategyOptimizer {
                         m.homeTeam(), m.awayTeam(), matrices[i], combo.get(i)));
             }
 
+            // Dados comunes (CRN): MISMA semilla para todas las combinaciones, así cada
+            // estrategia se evalúa contra los MISMOS torneos simulados y la diferencia de
+            // EV se debe a la estrategia, no a la suerte del azar. Antes se usaba
+            // 'seed + combo.hashCode()', lo que hacía que la "mejor" combinación pudiera
+            // ganar por dados favorables en vez de por ser mejor.
             StandingsResult r = StandingsSimulator.simulate(
                     standings, jornada, rivals, stage,
-                    simPerCombo, seed + Math.abs(combo.hashCode()));
+                    simPerCombo, seed);
 
             double payout = expectedPayout(r.p1st(), r.p2nd(), r.p3rd());
 
