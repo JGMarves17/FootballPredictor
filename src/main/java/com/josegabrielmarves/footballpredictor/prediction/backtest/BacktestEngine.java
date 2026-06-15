@@ -43,26 +43,42 @@ public final class BacktestEngine {
 
     private BacktestEngine() {}
 
-    /** Ejecuta el backtest con burn-in por defecto ({@value #DEFAULT_BURN_IN}). */
+    /** Ejecuta el backtest con burn-in por defecto y semilla CALIBRADA (replica la referencia). */
     public static BacktestMetrics run(Path dataFile) {
-        return run(dataFile, DEFAULT_BURN_IN);
+        return run(dataFile, DEFAULT_BURN_IN, true);
+    }
+
+    /** Ejecuta el backtest con semilla CALIBRADA (replica la referencia). */
+    public static BacktestMetrics run(Path dataFile, int burnIn) {
+        return run(dataFile, burnIn, true);
     }
 
     /**
      * Ejecuta el backtest walk-forward y devuelve las métricas acumuladas.
      *
-     * @param dataFile ruta a results.json (relativa a la raíz del repo)
-     * @param burnIn   partidos iniciales excluidos de la evaluación
+     * @param dataFile       ruta a results.json (relativa a la raíz del repo)
+     * @param burnIn         partidos iniciales excluidos de la evaluación
+     * @param seedCalibrated semilla de los ratings:
+     *   <ul>
+     *     <li>{@code true}  = ratings calibrados (replica la referencia MIT).
+     *         OJO: esos ratings se ajustaron sobre TODO el periodo del dataset,
+     *         así que el arranque ya incluye información del futuro → infla el
+     *         resultado (fuga parcial).</li>
+     *     <li>{@code false} = arranque PLANO (todos en {@link EloRating#DEFAULT_RATING});
+     *         el Elo se construye solo hacia adelante a partir de la secuencia
+     *         in-sample, sin fuga → número honesto/causal. Es el modo a usar para
+     *         evaluar de verdad el modelo y futuras mejoras.</li>
+     *   </ul>
      */
-    public static BacktestMetrics run(Path dataFile, int burnIn) {
+    public static BacktestMetrics run(Path dataFile, int burnIn, boolean seedCalibrated) {
         List<HistoricalMatch> matches = load(dataFile);
         Map<String, Double> ratings = new HashMap<>();
         BacktestMetrics metrics = new BacktestMetrics();
         int i = 0;
 
         for (HistoricalMatch m : matches) {
-            double ra = getRating(ratings, m.homeSlug, m.homeName);
-            double rb = getRating(ratings, m.awaySlug, m.awayName);
+            double ra = getRating(ratings, m.homeSlug, m.homeName, seedCalibrated);
+            double rb = getRating(ratings, m.awaySlug, m.awayName, seedCalibrated);
             EloRating home = EloRating.initial(m.homeName).withRating(ra);
             EloRating away = EloRating.initial(m.awayName).withRating(rb);
 
@@ -114,9 +130,10 @@ public final class BacktestEngine {
     // ── ratings ──────────────────────────────────────────────────────────────
 
     private static double getRating(Map<String, Double> ratings,
-                                    String slug, String name) {
+                                    String slug, String name, boolean seedCalibrated) {
         return ratings.computeIfAbsent(key(slug, name),
-                k -> CalibratedEloRatings.getRating(name).rating());
+                k -> seedCalibrated ? CalibratedEloRatings.getRating(name).rating()
+                                    : EloRating.DEFAULT_RATING);
     }
 
     private static void setRating(Map<String, Double> ratings,

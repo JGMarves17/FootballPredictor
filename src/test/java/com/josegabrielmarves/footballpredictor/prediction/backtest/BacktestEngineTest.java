@@ -64,4 +64,37 @@ class BacktestEngineTest {
                 m.matches(), BacktestEngine.DEFAULT_BURN_IN,
                 m.accuracy() * 100, m.brier(), m.logLoss(), m.rps());
     }
+
+    @Test
+    void honestModeIsLeakFreeAndLowerThanCalibrated() {
+        // Calibrado = replica la referencia, pero la semilla incluye info del futuro.
+        BacktestMetrics calibrated = BacktestEngine.run(
+                Paths.get("data/results.json"), BacktestEngine.DEFAULT_BURN_IN, true);
+        // Honesto = arranque plano, Elo construido solo hacia adelante (sin fuga).
+        BacktestMetrics honest = BacktestEngine.run(
+                Paths.get("data/results.json"), BacktestEngine.DEFAULT_BURN_IN, false);
+
+        // Evalúa el mismo universo de partidos…
+        assertTrue(honest.matches() > 700,
+                () -> "Partidos evaluados (honesto): " + honest.matches());
+        // …mejora claramente al modelo bobo uniforme (Brier 0.667 / RPS 0.333)…
+        assertTrue(honest.brier() < 0.667, () -> "Brier honesto: " + honest.brier());
+        assertTrue(honest.rps()   < 0.333, () -> "RPS honesto: "   + honest.rps());
+        // …pero, al quitar la fuga del futuro, es PEOR (más honesto) que el calibrado:
+        assertTrue(honest.accuracy() < calibrated.accuracy(),
+                () -> "Accuracy honesto " + honest.accuracy()
+                        + " debe ser < calibrado " + calibrated.accuracy());
+        assertTrue(honest.brier() > calibrated.brier(),
+                () -> "Brier honesto " + honest.brier()
+                        + " debe ser > calibrado " + calibrated.brier());
+
+        System.out.printf(
+                "%n=== Backtest: HONESTO (sin fuga) vs CALIBRADO (referencia) ===%n" +
+                        "  CALIBRADO (con fuga del futuro): Accuracy %.1f%%  Brier %.3f  RPS %.4f%n" +
+                        "  HONESTO   (causal, sin fuga)   : Accuracy %.1f%%  Brier %.3f  RPS %.4f%n" +
+                        "  -> El número honesto es %.1f%%.%n",
+                calibrated.accuracy()*100, calibrated.brier(), calibrated.rps(),
+                honest.accuracy()*100, honest.brier(), honest.rps(),
+                honest.accuracy()*100);
+    }
 }
