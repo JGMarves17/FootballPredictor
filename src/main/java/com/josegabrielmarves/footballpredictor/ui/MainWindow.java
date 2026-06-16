@@ -2,51 +2,79 @@ package com.josegabrielmarves.footballpredictor.ui;
 
 import com.josegabrielmarves.footballpredictor.api.datasource.OpenFootballProvider;
 import com.josegabrielmarves.footballpredictor.model.Match;
+import com.josegabrielmarves.footballpredictor.model.Score;
 import com.josegabrielmarves.footballpredictor.prediction.elo.CalibratedEloRatings;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
+import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer;
 import com.josegabrielmarves.footballpredictor.quiniela.StageDetector;
+import com.josegabrielmarves.footballpredictor.simulation.tournament.GroupSimulator;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.util.HashMap;
+import java.awt.geom.*;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 
 /**
- * Dashboard principal del sistema de quiniela.
- * Carga el fixture en un hilo separado (ventana aparece instantánea).
- * El botón genera predicciones honestas y óptimas para los 104 partidos.
+ * Dashboard principal — dos pestañas:
+ *   1. Bracket visual estilo FIFA (fase eliminatoria)
+ *   2. Tabla de los 104 partidos con predicciones
  */
 public class MainWindow extends JFrame {
 
+    // ── Colores tema oscuro ───────────────────────────────────────────────────
+    static final Color BG         = new Color(0x0F, 0x12, 0x17);
+    static final Color CARD_BG    = new Color(0x2A, 0x2F, 0x3B);
+    static final Color ACCENT     = new Color(0x00, 0xA3, 0xFF);
+    static final Color GOLD       = new Color(0xFF, 0xD7, 0x00);
+    static final Color TEXT_MAIN  = new Color(0xE8, 0xEC, 0xF2);
+    static final Color TEXT_DIM   = new Color(0x9B, 0xA4, 0xB5);
+    static final Color WINNER_BG  = new Color(0x00, 0xA3, 0xFF, 45);
+    static final Color DIVIDER    = new Color(0x3A, 0x41, 0x52);
+    static final Color CARD_BORDER= new Color(0x3A, 0x41, 0x52);
+
+    // ── Tabla ─────────────────────────────────────────────────────────────────
     private static final String[] COLUMNS = {
             "Local", "Visitante", "Fecha", "Grupo / Ronda", "Resultado", "Honesta", "Óptima (EV)"
     };
-
     private final DefaultTableModel tableModel;
     private final JButton btnPredict;
     private final JLabel statusLabel;
     private List<Match> loadedMatches;
 
+    // ── Bracket ───────────────────────────────────────────────────────────────
+    private BracketPanel bracketPanel;
+
     public MainWindow() {
         setTitle("Football Predictor — Quiniela Mundial 2026");
-        setSize(1400, 750);
+        setSize(1500, 820);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
-        setLayout(new BorderLayout());
+        setBackground(BG);
 
-        // ── Header ────────────────────────────────────────────────────────────
-        JLabel title = new JLabel("⚽  Football Predictor — Quiniela Mundial 2026",
-                SwingConstants.CENTER);
-        title.setFont(new Font("Arial", Font.BOLD, 22));
-        title.setBorder(BorderFactory.createEmptyBorder(12, 0, 12, 0));
-        add(title, BorderLayout.NORTH);
+        // Header
+        JLabel title = new JLabel("⚽  FOOTBALL PREDICTOR — QUINIELA MUNDIAL 2026", SwingConstants.CENTER);
+        title.setFont(new Font("Arial", Font.BOLD, 20));
+        title.setForeground(TEXT_MAIN);
+        title.setBackground(BG);
+        title.setOpaque(true);
+        title.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
 
-        // ── Tabla ─────────────────────────────────────────────────────────────
+        // ── Pestaña Bracket ───────────────────────────────────────────────────
+        bracketPanel = new BracketPanel(this);
+
+        JScrollPane bracketScroll = new JScrollPane(bracketPanel);
+        bracketScroll.setBackground(BG);
+        bracketScroll.getViewport().setBackground(BG);
+        bracketScroll.setBorder(BorderFactory.createEmptyBorder());
+        bracketScroll.getHorizontalScrollBar().setUnitIncrement(20);
+        bracketScroll.getVerticalScrollBar().setUnitIncrement(20);
+
+        // ── Pestaña Tabla ─────────────────────────────────────────────────────
         tableModel = new DefaultTableModel(COLUMNS, 0) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -55,32 +83,55 @@ public class MainWindow extends JFrame {
         table.setFont(new Font("Consolas", Font.PLAIN, 13));
         table.getTableHeader().setFont(new Font("Arial", Font.BOLD, 13));
         table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        table.setBackground(new Color(0x1A, 0x1E, 0x28));
+        table.setForeground(TEXT_MAIN);
+        table.setGridColor(DIVIDER);
+        table.getTableHeader().setBackground(CARD_BG);
+        table.getTableHeader().setForeground(TEXT_MAIN);
+
+        JScrollPane tableScroll = new JScrollPane(table);
+        tableScroll.setBackground(BG);
+
+        // ── JTabbedPane ───────────────────────────────────────────────────────
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setBackground(BG);
+        tabs.setForeground(TEXT_MAIN);
+        tabs.setFont(new Font("Arial", Font.BOLD, 13));
+        tabs.addTab("🏆  Bracket Eliminatoria", bracketScroll);
+        tabs.addTab("📋  Todos los partidos",   tableScroll);
 
         // ── Barra inferior ────────────────────────────────────────────────────
         btnPredict  = new JButton("⚡  Generar Predicciones");
-        btnPredict.setFont(new Font("Arial", Font.BOLD, 14));
-        btnPredict.setEnabled(false);   // se activa cuando termina la carga
+        btnPredict.setFont(new Font("Arial", Font.BOLD, 13));
+        btnPredict.setBackground(ACCENT);
+        btnPredict.setForeground(Color.WHITE);
+        btnPredict.setFocusPainted(false);
+        btnPredict.setBorder(BorderFactory.createEmptyBorder(8, 18, 8, 18));
+        btnPredict.setEnabled(false);
 
         statusLabel = new JLabel("  Cargando fixture 2026...");
         statusLabel.setFont(new Font("Arial", Font.PLAIN, 12));
+        statusLabel.setForeground(TEXT_DIM);
 
         JPanel bottom = new JPanel(new BorderLayout());
-        bottom.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        bottom.setBackground(CARD_BG);
+        bottom.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         bottom.add(statusLabel, BorderLayout.WEST);
         bottom.add(btnPredict,  BorderLayout.EAST);
+
+        // ── Layout principal ──────────────────────────────────────────────────
+        setLayout(new BorderLayout());
+        add(title,  BorderLayout.NORTH);
+        add(tabs,   BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
 
-        // ── Acción del botón ──────────────────────────────────────────────────
         btnPredict.addActionListener(e -> generatePredictions());
-
-        // ── Carga en background (ventana aparece de inmediato) ────────────────
         loadFixtureInBackground();
     }
 
     // ── Carga del fixture ─────────────────────────────────────────────────────
 
-    private void loadFixtureInBackground() {
+    void loadFixtureInBackground() {
         new SwingWorker<List<Match>, Void>() {
             @Override protected List<Match> doInBackground() throws Exception {
                 return new OpenFootballProvider().getWorldCupMatches(2026);
@@ -89,9 +140,10 @@ public class MainWindow extends JFrame {
                 try {
                     loadedMatches = get();
                     populateTable(loadedMatches);
+                    bracketPanel.setMatches(loadedMatches, buildRatings());
                     btnPredict.setEnabled(true);
                     statusLabel.setText("  ✓ " + loadedMatches.size() +
-                            " partidos cargados — pulsa el botón para generar predicciones");
+                            " partidos cargados — pulsa ⚡ para generar predicciones");
                 } catch (Exception ex) {
                     statusLabel.setText("  ✗ Error: " + ex.getMessage());
                 }
@@ -103,13 +155,10 @@ public class MainWindow extends JFrame {
         tableModel.setRowCount(0);
         for (Match m : matches) {
             tableModel.addRow(new Object[]{
-                    m.homeTeam,
-                    m.awayTeam,
-                    m.date,
+                    m.homeTeam, m.awayTeam, m.date,
                     m.group != null ? m.group : m.status,
                     m.score != null ? m.score.toString() : "—",
-                    "—",
-                    "—"
+                    "—", "—"
             });
         }
     }
@@ -120,75 +169,61 @@ public class MainWindow extends JFrame {
         if (loadedMatches == null) return;
         btnPredict.setEnabled(false);
         statusLabel.setText("  Calculando predicciones...");
-
         new SwingWorker<Void, Void>() {
             @Override protected Void doInBackground() {
-                // Ratings calibrados + jornada 1 aplicada
                 Map<String, EloRating> ratings = buildRatings();
-
                 for (int i = 0; i < loadedMatches.size(); i++) {
-                    Match m  = loadedMatches.get(i);
-                    EloRating home = ratings.getOrDefault(m.homeTeam,
-                            EloRating.initial(m.homeTeam));
-                    EloRating away = ratings.getOrDefault(m.awayTeam,
-                            EloRating.initial(m.awayTeam));
+                    Match m    = loadedMatches.get(i);
+                    EloRating h = ratings.getOrDefault(m.homeTeam, EloRating.initial(m.homeTeam));
+                    EloRating a = ratings.getOrDefault(m.awayTeam, EloRating.initial(m.awayTeam));
                     double bonus = isHost(m.homeTeam) ? EloCalculator.HOME_ADVANTAGE : 0.0;
-
-                    // Predicción honesta (modal de la matriz)
-                    var honest  = MatchEV.honest(home, away, bonus);
-                    // Predicción óptima (máximo EV de puntos)
-                    QuinielaScorer.Stage stage = StageDetector.detect(m);
-                    var optimal = MatchEV.best(home, away, bonus, stage);
-
-                    String honestStr  = honest.homeGoals() + "-" + honest.awayGoals();
-                    String optimalStr = optimal.score().homeGoals() + "-"
-                            + optimal.score().awayGoals()
+                    var honest   = MatchEV.honest(h, a, bonus);
+                    var optimal  = MatchEV.best(h, a, bonus, StageDetector.detect(m));
+                    String hon = honest.homeGoals() + "-" + honest.awayGoals();
+                    String opt = optimal.score().homeGoals() + "-" + optimal.score().awayGoals()
                             + String.format("  (%.2f pts)", optimal.expectedPoints());
-
                     final int row = i;
                     SwingUtilities.invokeLater(() -> {
-                        tableModel.setValueAt(honestStr,  row, 5);
-                        tableModel.setValueAt(optimalStr, row, 6);
+                        tableModel.setValueAt(hon, row, 5);
+                        tableModel.setValueAt(opt, row, 6);
                     });
                 }
                 return null;
             }
-
             @Override protected void done() {
                 btnPredict.setEnabled(true);
-                statusLabel.setText("  ✓ Predicciones generadas — " +
-                        "columna 'Honesta' = modal · 'Óptima' = máximo EV");
+                statusLabel.setText("  ✓ Predicciones generadas — Honesta=modal · Óptima=máx EV");
             }
         }.execute();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private Map<String, EloRating> buildRatings() {
+    Map<String, EloRating> buildRatings() {
         Map<String, EloRating> ratings = new HashMap<>();
-        for (Match m : loadedMatches) {
-            ratings.putIfAbsent(m.homeTeam, CalibratedEloRatings.getRating(m.homeTeam));
-            ratings.putIfAbsent(m.awayTeam, CalibratedEloRatings.getRating(m.awayTeam));
+        if (loadedMatches != null) {
+            for (Match m : loadedMatches) {
+                ratings.putIfAbsent(m.homeTeam, CalibratedEloRatings.getRating(m.homeTeam));
+                ratings.putIfAbsent(m.awayTeam, CalibratedEloRatings.getRating(m.awayTeam));
+            }
         }
-        // Aplicar resultados reales — actualizar cada jornada
-        applyResult(ratings, "Mexico",      "South Africa",  2, 1, EloCalculator.HOME_ADVANTAGE);
-        applyResult(ratings, "South Korea", "Czech Republic",1, 1, 0.0);
-        // → agregar jornadas siguientes aquí
+        applyResult(ratings, "Mexico",      "South Africa",   2, 1, EloCalculator.HOME_ADVANTAGE);
+        applyResult(ratings, "South Korea", "Czech Republic", 1, 1, 0.0);
+        // → agregar resultados de jornadas siguientes aquí
         return ratings;
     }
 
-    private void applyResult(Map<String, EloRating> ratings,
-                             String home, String away,
-                             double hg, double ag, double homeBonus) {
+    void applyResult(Map<String, EloRating> ratings,
+                     String home, String away,
+                     double hg, double ag, double bonus) {
         EloRating h = ratings.getOrDefault(home, EloRating.initial(home));
         EloRating a = ratings.getOrDefault(away, EloRating.initial(away));
-        var u = EloCalculator.updateRatings(h, a, hg, ag,
-                EloCalculator.K_WORLD_CUP, homeBonus);
+        var u = EloCalculator.updateRatings(h, a, hg, ag, EloCalculator.K_WORLD_CUP, bonus);
         ratings.put(home, u.home());
         ratings.put(away, u.away());
     }
 
-    private boolean isHost(String team) {
+    boolean isHost(String team) {
         return team.equals("Mexico") || team.equals("USA")
                 || team.equals("United States") || team.equals("Canada");
     }
