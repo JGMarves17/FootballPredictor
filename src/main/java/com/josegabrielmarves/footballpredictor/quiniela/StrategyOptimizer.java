@@ -99,7 +99,8 @@ public final class StrategyOptimizer {
         double[][][] matrices = new double[matches.size()][][];
         for (int i = 0; i < matches.size(); i++) {
             StrategyMatch m = matches.get(i);
-            matrices[i] = PoissonPredictor.scoreMatrix(m.home(), m.away(), m.homeBonus());
+            matrices[i] = PoissonPredictor.scoreMatrixTournament(
+                    m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage);
         }
 
         // Top-K candidatos por partido según EV de puntos

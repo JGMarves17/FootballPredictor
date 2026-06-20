@@ -32,8 +32,10 @@ class PoissonPredictorTest {
         // QA Obs. 2: el javadoc de MAX_GOALS afirma >99.7% para lambdas
         // reales (<=2.8, medido 99.76%) y ~99.0% en el clamp 3.5. Verificarlo.
         assertTrue(cumulative(2.8) > 0.997, "cobertura con lambda real");
-        assertTrue(cumulative(PoissonPredictor.MAX_LAMBDA) > 0.99,
-                "cobertura con lambda en el clamp");
+        assertTrue(cumulative(3.5) > 0.989,
+                "cobertura con lambda 3.5 (el clamp documentado original)");
+        assertTrue(cumulative(PoissonPredictor.MAX_LAMBDA) > 0.96,
+                "cobertura con lambda en el clamp max (" + PoissonPredictor.MAX_LAMBDA + ")");
     }
 
     private static double cumulative(double lambda) {

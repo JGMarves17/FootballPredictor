@@ -1,0 +1,32 @@
+{
+  "tournament": "FIFA World Cup 2026",
+  "updated": "2026-06-19",
+  "source": "RealGM xG Tracker (https://soccer.realgm.com)",
+  "notes": "Agregar partidos después de cada jornada. Formato: [home, away, homeXG, awayXG, homeGoals, awayGoals]",
+  "matches": [
+    ["Mexico",       "South Africa",        1.41, 0.07, 2, 0],
+    ["South Korea",  "Czech Republic",       1.84, 0.81, 2, 1],
+    ["Canada",       "Bosnia & Herzegovina", 1.25, 0.98, 1, 1],
+    ["USA",          "Paraguay",             1.35, 0.47, 4, 1],
+    ["Qatar",        "Switzerland",          0.76, 3.24, 1, 1],
+    ["Brazil",       "Morocco",              1.23, 1.53, 1, 1],
+    ["Haiti",        "Scotland",             1.21, 1.05, 0, 1],
+    ["Australia",    "Turkey",               0.77, 1.33, 2, 0],
+    ["Germany",      "Curaçao",              4.22, 0.41, 7, 1],
+    ["Ivory Coast",  "Ecuador",              1.68, 1.03, 1, 0],
+    ["Netherlands",  "Japan",                0.78, 0.59, 2, 2],
+    ["Sweden",       "Tunisia",              1.36, 0.28, 5, 1],
+    ["Spain",        "Cape Verde",           2.29, 0.30, 0, 0],
+    ["Belgium",      "Egypt",                1.35, 1.08, 1, 1],
+    ["Saudi Arabia", "Uruguay",              0.99, 1.54, 1, 1],
+    ["Iran",         "New Zealand",          1.50, 1.24, 2, 2],
+    ["France",       "Senegal",              1.79, 0.56, 3, 1],
+    ["Iraq",         "Norway",               0.77, 2.10, 1, 4],
+    ["Argentina",    "Algeria",              2.80, 0.30, 3, 0],
+    ["Austria",      "Jordan",               2.20, 0.50, 3, 1],
+    ["Portugal",     "DR Congo",             1.68, 0.80, 1, 1],
+    ["Uzbekistan",   "Colombia",             0.60, 2.80, 1, 3],
+    ["England",      "Croatia",              2.50, 1.20, 4, 2],
+    ["Ghana",        "Panama",               1.50, 0.50, 1, 0]
+  ]
+}
