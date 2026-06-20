@@ -1,6 +1,6 @@
 # FootballPredictor — Proyecto Vivo
 > Documento de arranque de sesión. Pegar completo al iniciar cada conversación y actualizar SOLO "Contexto dinámico".
-> Última actualización: 19-jun-2026. **MOTOR V2 EN BRANCH `motor-v2`** (sin merge aún). Build compilando con warnings de @Deprecated (no errores).
+> Última actualización: 20-jun-2026. **MOTOR V2 mergeado a `main`** (`833e506`). Build compilando con warnings de @Deprecated (no errores). 89 tests verdes.
 
 ---
 
@@ -11,7 +11,7 @@
 | Máquina | CASA (`C:\Users\Administrator\IdeaProjects\FootballPredictor`) |
 | Fase del Mundial | EN CURSO. Jornada 2 completa (18-jun). |
 | Próxima jornada | Jornada 3 [confirmar partidos y deadline] |
-| Branch activo | `motor-v2` (NO mergeado a main) |
+| Branch activo | `main` (motor-v2 mergeado) |
 | ¿Hice git pull/push? | [SÍ/NO] |
 
 ⚠️ **Regla de oro:** enviar predicciones por WhatsApp ANTES del primer partido. No enviar = −3 pts + 10L por partido.
@@ -129,11 +129,9 @@ FIFAFormCalculatorTest(6) · ScoreMatrixTest(7) · MatchdayEngineTest(2) · Tour
 ## 🔜 PENDIENTES
 | Prioridad | Tarea |
 |---|---|
-| 🔴 | Terminar build motor-v2 (compila con warnings) → correr tests (esperado ~84 verdes) |
-| 🔴 | Configurar partidos jornada 3 en QuinielaRunnerV2 → correr → WhatsApp |
-| 🔴 | Commit + push motor-v2 → merge a main |
-| 🟡 | Implementar `MarketComparator` (tabla modelo vs mercado + recomendación + ensemble) |
-| 🟡 | Agregar resultados+xG jornada 2 con updater.matchPlayed() (xG de soccer.realgm.com) |
+| 🔴 | Configurar partidos jornada 3 en QuinielaRunnerV2 → correr → enviar WhatsApp |
+| 🔴 | Agregar resultados reales + xG jornada 2 con updater.matchPlayed() |
+| 🟡 | Agregar resultados+xG jornada 3 tras que se juegue |
 | 🟢 | Cada noche: agregar resultados del día con LiveMatchUpdater |
 
 ---

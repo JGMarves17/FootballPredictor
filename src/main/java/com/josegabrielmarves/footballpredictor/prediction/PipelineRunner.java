@@ -1,11 +1,13 @@
 package com.josegabrielmarves.footballpredictor.prediction;
 
+import com.josegabrielmarves.footballpredictor.messaging.WhatsAppMessenger;
 import com.josegabrielmarves.footballpredictor.prediction.backtest.BacktestEngine;
 import com.josegabrielmarves.footballpredictor.prediction.backtest.BacktestMetrics;
 
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 public final class PipelineRunner {
 
@@ -21,14 +23,14 @@ public final class PipelineRunner {
         System.out.println("=".repeat(60));
 
         // 1. Backtest honesto
-        System.out.println("\n[1/5] Backtest honesto...");
+        System.out.println("\n[1/7] Backtest honesto...");
         Path dataFile = Path.of("data/results.json");
         BacktestMetrics honest = BacktestEngine.run(dataFile, 150, false);
         System.out.printf("  Accuracy: %.1f%%  Brier: %.4f  LogLoss: %.4f  RPS: %.4f  (%d partidos)%n",
                 honest.accuracy() * 100, honest.brier(), honest.logLoss(), honest.rps(), honest.matches());
 
         // 2. Cargar fixture y ratings
-        System.out.println("\n[2/5] Inicializando modelo...");
+        System.out.println("\n[2/7] Inicializando modelo...");
         var matches = new com.josegabrielmarves.footballpredictor.api.datasource.OpenFootballProvider()
                 .getWorldCupMatches(2026);
         var ratings = new java.util.HashMap<String,
@@ -41,7 +43,7 @@ public final class PipelineRunner {
         }
 
         // 3. Calibrar GLM con datos del torneo
-        System.out.println("[3/5] Calibrando GLM...");
+        System.out.println("[3/7] Calibrando GLM...");
         var wcHistory = new java.util.ArrayList<com.josegabrielmarves.footballpredictor.prediction.TournamentGLM.MatchData>();
         String[][] j1results = {
                 {"Mexico","South Africa","2","0"},{"South Korea","Czech Republic","2","1"},
@@ -66,8 +68,17 @@ public final class PipelineRunner {
         com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor.setGLM(glm);
         System.out.printf("  GLM calibrado con %d partidos%n", glm.matchesUsed());
 
-        // 4. Market comparison
-        System.out.println("\n[4/5] Comparación modelo vs mercado (si hay odds)...");
+        // 4. LiveResultFetcher — busca resultados desde internet
+        System.out.println("\n[4/7] LiveResultFetcher — buscando resultados en vivo...");
+        LiveResultFetcher fetcher = new LiveResultFetcher(ratings, wcHistory);
+        int nuevos = fetcher.fetchAndUpdate();
+        if (nuevos > 0) {
+            var newGlm = com.josegabrielmarves.footballpredictor.prediction.TournamentGLM.fit(wcHistory, ratings);
+            com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor.setGLM(newGlm);
+        }
+
+        // 5. Market comparison
+        System.out.println("\n[5/7] Comparación modelo vs mercado (si hay odds)...");
         try {
             String apiKey = System.getenv("ODDS_API_KEY");
             if (apiKey == null || apiKey.isBlank()) {
@@ -89,15 +100,37 @@ public final class PipelineRunner {
             System.out.println("  (sin odds disponibles: " + e.getMessage() + ")");
         }
 
-        // 5. Resumen
-        System.out.println("\n[5/5] Resumen ejecutivo");
-        System.out.println("-".repeat(60));
+        // 6. Predecir jornada
+        System.out.println("\n[6/7] Generando predicciones...");
+        int jornada = 3;
+        var matchday = List.of(
+                new MatchdayEngine.MatchInput("Czech Republic", "Mexico", 0.0, com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("South Africa", "South Korea", 0.0, com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("Bosnia & Herzegovina", "Switzerland", 0.0, com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("Qatar", "Canada", 0.0, com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS)
+        );
+        MatchdayEngine.preMatchday(jornada, matchday, ratings, today);
+
+        // 7. WhatsApp — genera mensaje y copia al portapapeles
+        System.out.println("\n[7/7] Generando mensaje de WhatsApp...");
+        String msg = WhatsAppMessenger.buildMessage(jornada, matchday,
+                matchday.stream().map(m -> ratings.getOrDefault(m.homeTeam(),
+                        com.josegabrielmarves.footballpredictor.prediction.elo.EloRating.initial(m.homeTeam()))).toList(),
+                matchday.stream().map(m -> ratings.getOrDefault(m.awayTeam(),
+                        com.josegabrielmarves.footballpredictor.prediction.elo.EloRating.initial(m.awayTeam()))).toList());
+        WhatsAppMessenger.send(msg, WhatsAppMessenger.Mode.COPY);
+
+        // Resumen
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("  RESUMEN EJECUTIVO");
+        System.out.println("=".repeat(60));
         System.out.printf("  Fecha:         %s%n", dateStr);
         System.out.printf("  Backtest acc:  %.1f%% (%d partidos)%n",
                 honest.accuracy() * 100, honest.matches());
         System.out.printf("  GLM partidos:  %d%n", glm.matchesUsed());
+        System.out.printf("  Resultados nuevos: %d%n", nuevos);
         System.out.printf("  Equipos:       %d%n", ratings.size());
-        System.out.printf("  Partidos WC:   %d%n", matches.size());
+        System.out.printf("  Jornada:       %d%n", jornada);
         System.out.println("-".repeat(60));
         System.out.println();
         System.out.println("  ⚠️  ENVIAR PREDICCIONES POR WHATSAPP ANTES DEL PRIMER PARTIDO");

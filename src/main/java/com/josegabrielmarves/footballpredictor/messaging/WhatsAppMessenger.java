@@ -1,0 +1,172 @@
+package com.josegabrielmarves.footballpredictor.messaging;
+
+import com.josegabrielmarves.footballpredictor.model.Score;
+import com.josegabrielmarves.footballpredictor.prediction.MatchdayEngine;
+import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
+import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
+import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
+import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer;
+import com.josegabrielmarves.footballpredictor.quiniela.StrategyOptimizer;
+
+import java.awt.*;
+import java.awt.datatransfer.StringSelection;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * Genera y envía el mensaje de WhatsApp con las predicciones de la jornada.
+ *
+ * Modos de envío:
+ *   1. COPY    — copia al portapapeles (lo pegas manual en WhatsApp)
+ *   2. BROWSER — abre WhatsApp Web con el texto pre-escrito
+ *   3. BOTH    — ambos (default)
+ */
+public final class WhatsAppMessenger {
+
+    public enum Mode { COPY, BROWSER, BOTH }
+
+    private static final String GROUP_NAME = "Quiniela Mundial 2026";
+    private static final String MI_NOMBRE  = "Gabriel Marves";
+
+    private WhatsAppMessenger() {}
+
+    /**
+     * Genera el mensaje de texto con las predicciones óptimas.
+     */
+    public static String buildMessage(int jornada,
+                                      List<MatchdayEngine.MatchInput> matchday,
+                                      List<EloRating> homeRatings,
+                                      List<EloRating> awayRatings) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("⚽ *PREDICCIONES JORNADA ").append(jornada).append("*\n");
+        sb.append("📅 ").append(java.time.LocalDate.now()).append("\n");
+        sb.append("👤 ").append(MI_NOMBRE).append("\n");
+        sb.append("─".repeat(25)).append("\n\n");
+
+        for (int i = 0; i < matchday.size(); i++) {
+            MatchdayEngine.MatchInput m = matchday.get(i);
+            EloRating hR = homeRatings.get(i);
+            EloRating aR = awayRatings.get(i);
+            Score honesto = PoissonPredictor.mostLikelyScore(hR, aR, m.homeBonus());
+            MatchEV.Candidate optimo = MatchEV.best(hR, aR, m.homeBonus(), m.stage());
+            MatchEV.Risk riesgo = MatchEV.risk(hR, aR, m.homeBonus());
+
+            double pHome = PoissonPredictor.matchProbabilities(hR, aR, m.homeBonus()).homeWin();
+            double pDraw = PoissonPredictor.matchProbabilities(hR, aR, m.homeBonus()).draw();
+            double pAway = PoissonPredictor.matchProbabilities(hR, aR, m.homeBonus()).awayWin();
+
+            sb.append("🏟️ *").append(m.homeTeam()).append("* vs *").append(m.awayTeam()).append("*\n");
+            sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%", pHome*100, pDraw*100, pAway*100)).append("\n");
+            sb.append("   🎯 ").append(optimo.score().homeGoals()).append("-").append(optimo.score().awayGoals());
+            sb.append("  (").append(riesgo.label).append(")\n");
+            sb.append("   📝 Honesta: ").append(honesto.homeGoals()).append("-").append(honesto.awayGoals()).append("\n");
+            sb.append("\n");
+        }
+
+        sb.append("─".repeat(25)).append("\n");
+        sb.append("⚡ Generado por FootballPredictor v2 — Triple Blend + xG\n");
+        sb.append("📱 Enviado desde ").append(System.getProperty("os.name")).append("\n");
+
+        return sb.toString();
+    }
+
+    /**
+     * Construye el mensaje desde un OptimizationResult.
+     */
+    public static String buildMessage(int jornada,
+                                      List<MatchdayEngine.MatchInput> matchday,
+                                      StrategyOptimizer.OptimizationResult opt,
+                                      List<StrategyOptimizer.StrategyMatch> strategyMatches) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("⚽ *PREDICCIONES JORNADA ").append(jornada).append("*\n");
+        sb.append("📅 ").append(java.time.LocalDate.now()).append("\n");
+        sb.append("👤 ").append(MI_NOMBRE).append("\n");
+        sb.append("📊 P(podio)=").append(String.format("%.1f%%", opt.pPodio()*100));
+        sb.append(" · Pos.Esp=").append(String.format("%.2f", opt.expectedPosition()));
+        sb.append("/").append(opt.participants()).append("\n");
+        sb.append("─".repeat(25)).append("\n\n");
+
+        for (int i = 0; i < matchday.size(); i++) {
+            MatchdayEngine.MatchInput m = matchday.get(i);
+            StrategyOptimizer.StrategyMatch sm = strategyMatches.get(i);
+            Score p = opt.predictions().get(i);
+            MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), m.homeBonus());
+            double pHome = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), m.homeBonus()).homeWin();
+            double pDraw = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), m.homeBonus()).draw();
+            double pAway = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), m.homeBonus()).awayWin();
+
+            sb.append("🏟️ *").append(m.homeTeam()).append("* vs *").append(m.awayTeam()).append("*\n");
+            sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%", pHome*100, pDraw*100, pAway*100)).append("\n");
+            sb.append("   🎯 *").append(p.homeGoals()).append("-").append(p.awayGoals()).append("*  (").append(riesgo.label).append(")\n");
+            sb.append("\n");
+        }
+
+        sb.append("─".repeat(25)).append("\n");
+        sb.append("⚡ Optimizado por FootballPredictor v2\n");
+        sb.append("📱 ").append(java.time.LocalDateTime.now()).append("\n");
+
+        return sb.toString();
+    }
+
+    /**
+     * Envía el mensaje según el modo elegido.
+     */
+    public static void send(String message, Mode mode) {
+        switch (mode) {
+            case COPY -> copyToClipboard(message);
+            case BROWSER -> openWhatsApp(message);
+            case BOTH -> {
+                copyToClipboard(message);
+                openWhatsApp(message);
+            }
+        }
+    }
+
+    /**
+     * Envía por clipboard (default).
+     */
+    public static void send(String message) {
+        send(message, Mode.COPY);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static void copyToClipboard(String message) {
+        Toolkit.getDefaultToolkit()
+                .getSystemClipboard()
+                .setContents(new StringSelection(message), null);
+        System.out.println("\n✅ Mensaje copiado al portapapeles — pégalo en WhatsApp");
+        System.out.println("─".repeat(40));
+        System.out.println(message);
+        System.out.println("─".repeat(40));
+    }
+
+    private static void openWhatsApp(String message) {
+        try {
+            String encoded = URLEncoder.encode(message, StandardCharsets.UTF_8);
+            String url = "https://web.whatsapp.com/send?text=" + encoded;
+
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(URI.create(url));
+                System.out.println("✅ WhatsApp Web abierto — selecciona el chat y envía");
+            } else {
+                System.out.println("\n⚠️  No se pudo abrir el navegador automáticamente.");
+                System.out.println("👉 Abre manualmente: web.whatsapp.com");
+                System.out.println("👉 Pega el mensaje del portapapeles (Ctrl+V)");
+            }
+        } catch (Exception e) {
+            System.err.println("[WhatsApp] Error al abrir navegador: " + e.getMessage());
+        }
+    }
+
+    public static void main(String[] args) {
+        // Demo
+        String demo = "⚽ *PREDICCIONES JORNADA 3*\n📅 2026-06-20\n👤 Gabriel Marves\n\n"
+                + "🏟️ *USA* vs *Canada*\n   📊 1=58% X=22% 2=20%\n   🎯 2-1  (💪 FUERTE)";
+        send(demo, Mode.COPY);
+    }
+}

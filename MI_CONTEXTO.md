@@ -2,7 +2,7 @@
 
 ## 🧭 Sesión actual
 - Fecha: _______________
-- Branch: `motor-v2`
+- Branch: `main` (motor-v2 mergeado)
 - Jornada: _____
 - Próximo deadline: _______________
 - ¿Ya envié WhatsApp? [ ]
