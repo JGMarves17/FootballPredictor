@@ -13,10 +13,14 @@ import java.util.stream.Collectors;
  * Evalúa todos los marcadores candidatos para un partido y devuelve
  * el ranking por EV esperado de puntos de quiniela.
  *
- * Métodos nuevos (Fase 13+):
- *   - top3MC()  → Top 3 marcadores más frecuentes por Monte Carlo
- *   - risk()    → Clasificación de riesgo del pick (Fijo/Fuerte/Doble/Triple)
- *   - bestResult() → Resultado 1X2 más probable con su probabilidad
+ * Métodos clave:
+ *   - best()           → marcador que maximiza EV (conservador)
+ *   - honest()         → marcador modal de la matriz Poisson+DC
+ *   - top3MC()         → Top 3 marcadores más frecuentes por Monte Carlo
+ *   - risk()           → Clasificación de riesgo (Fijo/Fuerte/Doble/Triple)
+ *   - bestResult()     → Resultado 1X2 más probable con su probabilidad
+ *   - seguro()         → [v2] marcador de resultado más probable (juega seguro)
+ *   - exactoArriesgado() → [v2] marcador exacto pico de la matriz de TORNEO (xG+GLM)
  */
 public final class MatchEV {
 
@@ -26,40 +30,26 @@ public final class MatchEV {
 
     // ── Tipos ─────────────────────────────────────────────────────────────────
 
-    /**
-     * Nivel de riesgo del pick basado en P(mejor resultado 1X2).
-     *   Fijo    ≥ 65% — alta confianza
-     *   Fuerte  ≥ 55% — buena confianza
-     *   Doble   ≥ 45% — confianza media (considera 2 opciones)
-     *   Triple  < 45% — incertidumbre alta (considera las 3 opciones)
-     */
     public enum Risk {
         FIJO   ("🔒 FIJO"),
         FUERTE ("💪 FUERTE"),
         DOBLE  ("⚖️  DOBLE"),
         TRIPLE ("🎲 TRIPLE");
-
         public final String label;
         Risk(String label) { this.label = label; }
     }
 
-    /** Candidato: marcador con sus métricas de EV de quiniela. */
     public record Candidate(
-            Score score,
-            double pExact,
-            double pResult,
-            double expectedPoints,
-            double expectedFine
+            Score score, double pExact, double pResult,
+            double expectedPoints, double expectedFine
     ) {
         @Override public String toString() {
             return String.format("%d-%d  pts=%.3f  multa=%.2fL  P(exacto)=%.1f%%  P(result)=%.1f%%",
                     score.homeGoals(), score.awayGoals(),
-                    expectedPoints, expectedFine,
-                    pExact * 100, pResult * 100);
+                    expectedPoints, expectedFine, pExact * 100, pResult * 100);
         }
     }
 
-    /** Marcador con su frecuencia relativa en simulaciones Monte Carlo. */
     public record MCScore(Score score, double frequency) {
         @Override public String toString() {
             return String.format("%d-%d (%.1f%%)",
@@ -67,23 +57,32 @@ public final class MatchEV {
         }
     }
 
+    /**
+     * [v2] Recomendación dual para la quiniela:
+     *   seguro          → marcador del resultado más probable (alta P de acertar resultado)
+     *   exacto          → marcador exacto con mayor probabilidad real (apunta a los 3 pts)
+     *   pExactoSeguro   → P del marcador seguro
+     *   pExactoArriesgado → P del marcador exacto pico
+     *   risk            → nivel de confianza del resultado
+     */
+    public record DualPick(
+            Score seguro, double pSeguro,
+            Score exacto, double pExacto,
+            Risk risk, String resultLabel
+    ) {}
+
     // ── Métodos principales ───────────────────────────────────────────────────
 
-    /** Ranking completo de marcadores candidatos por EV de puntos (desc). */
     public static List<Candidate> rank(EloRating home, EloRating away,
                                        double homeBonus, Stage stage) {
         double[][] matrix = PoissonPredictor.scoreMatrix(home, away, homeBonus);
         PoissonPredictor.MatchProbabilities probs =
                 PoissonPredictor.matchProbabilities(home, away, homeBonus);
-
         List<Candidate> candidates = new ArrayList<>();
         for (int h = 0; h <= MAX_GOALS; h++) {
             for (int a = 0; a <= MAX_GOALS; a++) {
-                double pExact = (h < matrix.length && a < matrix[h].length)
-                        ? matrix[h][a] : 0.0;
-                double pResult = h > a ? probs.homeWin()
-                        : h < a ? probs.awayWin()
-                          : probs.draw();
+                double pExact = (h < matrix.length && a < matrix[h].length) ? matrix[h][a] : 0.0;
+                double pResult = h > a ? probs.homeWin() : h < a ? probs.awayWin() : probs.draw();
                 candidates.add(new Candidate(new Score(h, a), pExact, pResult,
                         QuinielaScorer.expectedPoints(pExact, pResult, stage),
                         QuinielaScorer.expectedFine(pResult)));
@@ -93,56 +92,88 @@ public final class MatchEV {
         return candidates;
     }
 
-    /** Predicción óptima: marcador que maximiza EV de puntos de quiniela. */
-    public static Candidate best(EloRating home, EloRating away,
-                                 double homeBonus, Stage stage) {
+    public static Candidate best(EloRating home, EloRating away, double homeBonus, Stage stage) {
         return rank(home, away, homeBonus, stage).get(0);
     }
 
-    /** Predicción honesta: marcador modal de la matriz Poisson+DC. */
     public static Score honest(EloRating home, EloRating away, double homeBonus) {
         return PoissonPredictor.mostLikelyScore(home, away, homeBonus);
     }
 
-    // ── Nuevos métodos ────────────────────────────────────────────────────────
+    // ── [v2] Recomendación dual con matriz de TORNEO ──────────────────────────
 
     /**
-     * Top 3 marcadores más frecuentes por simulación Monte Carlo.
+     * Genera la recomendación dual (seguro + exacto arriesgado) usando la
+     * matriz del TORNEO (triple-blend: Elo + xG + GLM), no la matriz solo-Elo.
      *
-     * A diferencia del modal (honest), MC captura la distribución completa
-     * incluyendo la corrección Dixon-Coles. El top 3 puede diferir del modal
-     * cuando hay varios marcadores con probabilidades similares.
+     * - seguro: dentro del resultado 1X2 más probable, el marcador más probable
+     *   (típicamente conservador, alta chance de acertar el resultado → 1 pt)
+     * - exacto: el marcador exacto con mayor probabilidad absoluta en la matriz
+     *   (apunta al marcador exacto → 3 pts, es el que rompe empates en la tabla)
      *
-     * @param n    número de simulaciones (10_000 recomendado)
-     * @param seed semilla para reproducibilidad
+     * Cuando el favorito es claro, ambos pueden coincidir. Cuando hay goleada
+     * probable, el exacto será más agresivo (3-0, 3-1) que el seguro (2-0).
      */
+    public static DualPick dualPick(String homeTeam, EloRating home,
+                                    String awayTeam, EloRating away,
+                                    double homeBonus) {
+        double[][] m = PoissonPredictor.scoreMatrixTournament(
+                homeTeam, home, awayTeam, away, homeBonus);
+        PoissonPredictor.MatchProbabilities probs =
+                PoissonPredictor.matchProbabilitiesTournament(
+                        homeTeam, home, awayTeam, away, homeBonus);
+
+        // Exacto: marcador con mayor probabilidad absoluta en toda la matriz
+        int eh = 0, ea = 0; double pExacto = -1;
+        for (int h = 0; h < m.length; h++)
+            for (int a = 0; a < m[h].length; a++)
+                if (m[h][a] > pExacto) { pExacto = m[h][a]; eh = h; ea = a; }
+
+        // Resultado más probable (1, X, 2)
+        char winner = probs.homeWin() >= probs.draw() && probs.homeWin() >= probs.awayWin() ? '1'
+                : probs.awayWin() >= probs.draw() ? '2' : 'X';
+
+        // Seguro: marcador más probable DENTRO del resultado dominante
+        int sh = 0, sa = 0; double pSeguro = -1;
+        for (int h = 0; h < m.length; h++)
+            for (int a = 0; a < m[h].length; a++) {
+                char r = h > a ? '1' : h < a ? '2' : 'X';
+                if (r == winner && m[h][a] > pSeguro) { pSeguro = m[h][a]; sh = h; sa = a; }
+            }
+
+        double best = Math.max(probs.homeWin(), Math.max(probs.draw(), probs.awayWin()));
+        Risk risk = best >= 0.65 ? Risk.FIJO : best >= 0.55 ? Risk.FUERTE
+                                               : best >= 0.45 ? Risk.DOBLE : Risk.TRIPLE;
+
+        String label = winner == '1' ? homeTeam : winner == '2' ? awayTeam : "Empate";
+        label = String.format("%s (%.0f%%)", label, best * 100);
+
+        return new DualPick(new Score(sh, sa), pSeguro,
+                new Score(eh, ea), pExacto, risk, label);
+    }
+
+    // ── Métodos existentes ────────────────────────────────────────────────────
+
     public static List<MCScore> top3MC(EloRating home, EloRating away,
                                        double homeBonus, int n, long seed) {
         double[][] matrix = PoissonPredictor.scoreMatrix(home, away, homeBonus);
         Random rng = new Random(seed);
         Map<String, Integer> counts = new HashMap<>();
-
         for (int i = 0; i < n; i++) {
             Score s = MonteCarloSimulator.sample(matrix, rng);
             counts.merge(s.homeGoals() + "-" + s.awayGoals(), 1, Integer::sum);
         }
-
         return counts.entrySet().stream()
                 .sorted((a, b) -> b.getValue() - a.getValue())
                 .limit(3)
                 .map(e -> {
                     String[] p = e.getKey().split("-");
-                    return new MCScore(
-                            new Score(Integer.parseInt(p[0]), Integer.parseInt(p[1])),
+                    return new MCScore(new Score(Integer.parseInt(p[0]), Integer.parseInt(p[1])),
                             (double) e.getValue() / n);
                 })
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Clasificación de riesgo del pick.
-     * Se basa en P(mejor resultado 1X2), no en el marcador exacto.
-     */
     public static Risk risk(EloRating home, EloRating away, double homeBonus) {
         PoissonPredictor.MatchProbabilities probs =
                 PoissonPredictor.matchProbabilities(home, away, homeBonus);
@@ -153,13 +184,8 @@ public final class MatchEV {
         return Risk.TRIPLE;
     }
 
-    /**
-     * Resultado 1X2 más probable con su probabilidad.
-     * Ejemplo: "Local (58%)"
-     */
     public static String bestResult(EloRating home, EloRating away,
-                                    double homeBonus,
-                                    String homeTeam, String awayTeam) {
+                                    double homeBonus, String homeTeam, String awayTeam) {
         PoissonPredictor.MatchProbabilities p =
                 PoissonPredictor.matchProbabilities(home, away, homeBonus);
         if (p.homeWin() >= p.draw() && p.homeWin() >= p.awayWin())
