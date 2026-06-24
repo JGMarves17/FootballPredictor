@@ -9,6 +9,7 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.CalibratedEloRatin
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
+import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2;
 
 import javax.swing.*;
 import javax.swing.table.*;
@@ -39,6 +40,9 @@ public class MainWindow extends JFrame {
     private List<Match> loadedMatches;
     private BracketPanel bracketPanel;
     private MatrixPanel matrixPanel;
+    private static JTextArea consoleArea;
+    private JButton btnPipeline;
+    private JTabbedPane tabs;
 
     public MainWindow() {
         setTitle("Football Predictor — Quiniela Mundial 2026");
@@ -99,12 +103,23 @@ public class MainWindow extends JFrame {
         // ── Pestaña Matriz 500k ───────────────────────────────────────────────
         matrixPanel = new MatrixPanel();
 
+        // ── Pestaña Consola del Sistema (captura todo lo que iría al CMD) ─────
+        consoleArea = new JTextArea();
+        consoleArea.setEditable(false);
+        consoleArea.setFont(new Font("Consolas", Font.PLAIN, 12));
+        consoleArea.setBackground(new Color(0x12, 0x16, 0x1C));
+        consoleArea.setForeground(new Color(0x9C, 0xDC, 0xFE));
+        JScrollPane consoleScroll = new JScrollPane(consoleArea);
+        consoleScroll.setBorder(BorderFactory.createEmptyBorder());
+        redirectSystemStreams();
+
         // ── Tabs ──────────────────────────────────────────────────────────────
-        JTabbedPane tabs = new JTabbedPane();
+        tabs = new JTabbedPane();
         tabs.setFont(new Font("Arial", Font.BOLD, 13));
         tabs.addTab("🌍  Grupos & Bracket",   bracketScroll);
         tabs.addTab("📋  Todos los partidos", tablePanel);
         tabs.addTab("🎯  Matriz 500k",        matrixPanel);
+        tabs.addTab("🖥️  Consola del Sistema", consoleScroll);
 
         btnPredict = new JButton("⚡  Generar Predicciones");
         btnPredict.setFont(new Font("Arial", Font.BOLD, 13));
@@ -112,10 +127,17 @@ public class MainWindow extends JFrame {
         statusLabel = new JLabel("  Cargando fixture 2026...");
         statusLabel.setForeground(TEXT_DIM);
 
+        btnPipeline = new JButton("▶  Correr Pipeline Completo");
+        btnPipeline.setFont(new Font("Arial", Font.BOLD, 13));
+
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        btnRow.add(btnPipeline);
+        btnRow.add(btnPredict);
+
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         bottom.add(statusLabel, BorderLayout.WEST);
-        bottom.add(btnPredict,  BorderLayout.EAST);
+        bottom.add(btnRow,      BorderLayout.EAST);
 
         setLayout(new BorderLayout());
         add(title,  BorderLayout.NORTH);
@@ -123,6 +145,7 @@ public class MainWindow extends JFrame {
         add(bottom, BorderLayout.SOUTH);
 
         btnPredict.addActionListener(e -> generatePredictions());
+        btnPipeline.addActionListener(e -> runPipeline());
         loadFixtureInBackground();
     }
 
@@ -380,6 +403,51 @@ public class MainWindow extends JFrame {
                 }
             }
         }
+    }
+
+    // ── Correr pipeline completo (salida → pestaña Consola) ───────────────────
+    private void runPipeline() {
+        btnPipeline.setEnabled(false);
+        statusLabel.setText("  Corriendo pipeline completo... ver pestaña Consola del Sistema");
+        // Abrir la pestaña Consola (índice 3)
+        tabs.setSelectedIndex(3);
+        consoleArea.setText("");
+        new SwingWorker<Void, Void>() {
+            @Override protected Void doInBackground() {
+                try {
+                    QuinielaRunnerV2.run();
+                } catch (Exception ex) {
+                    System.out.println("\n[ERROR] " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+                return null;
+            }
+            @Override protected void done() {
+                btnPipeline.setEnabled(true);
+                statusLabel.setText("  ✓ Pipeline completado — revisa la pestaña Consola del Sistema");
+            }
+        }.execute();
+    }
+
+    // ── Redirección de consola a la pestaña ───────────────────────────────────
+    private static void redirectSystemStreams() {
+        java.io.OutputStream out = new java.io.OutputStream() {
+            @Override public void write(int b) {
+                SwingUtilities.invokeLater(() -> {
+                    consoleArea.append(String.valueOf((char) b));
+                    consoleArea.setCaretPosition(consoleArea.getDocument().getLength());
+                });
+            }
+            @Override public void write(byte[] b, int off, int len) {
+                String s = new String(b, off, len);
+                SwingUtilities.invokeLater(() -> {
+                    consoleArea.append(s);
+                    consoleArea.setCaretPosition(consoleArea.getDocument().getLength());
+                });
+            }
+        };
+        System.setOut(new java.io.PrintStream(out, true));
+        System.setErr(new java.io.PrintStream(out, true));
     }
 
     // ── main con FlatLaf ──────────────────────────────────────────────────────

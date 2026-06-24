@@ -16,25 +16,28 @@ import java.util.*;
 /**
  * PUNTO DE ENTRADA PRINCIPAL v2.
  *
- * Cada partido jugado alimenta automáticamente las 500k simulaciones del
- * siguiente partido mediante LiveMatchUpdater:
- *   partido jugado → xG + Elo + GLM actualizados → próxima ScoreMatrix más precisa
+ * La lógica vive en run(), que puede llamarse desde:
+ *   - main() (consola)
+ *   - el dashboard (botón "Correr Pipeline") → la salida va a la pestaña Consola
  *
- * FLUJO DIARIO:
- *   MAÑANA  → correr para obtener predicciones (500k por partido)
- *   NOCHE   → agregar resultados con updater.matchPlayed() → re-calibra GLM
- *   MAÑANA  → correr de nuevo (ya con datos actualizados)
+ * Cada partido jugado alimenta automáticamente las 500k del siguiente
+ * mediante LiveMatchUpdater.
  */
 public final class QuinielaRunnerV2 {
 
     private QuinielaRunnerV2() {}
 
     public static void main(String[] args) throws Exception {
+        run();
+    }
+
+    /** Ejecuta el pipeline completo. Toda la salida va por System.out. */
+    public static void run() throws Exception {
 
         System.out.println("""
             ╔══════════════════════════════════════════════════╗
-            ║   FOOTBALL PREDICTOR v2 — Triple-Blend + xG     ║
-            ║   Elo 40% + FIFAForm 25% + GLM 35% + xG real   ║
+            ║    FOOTBALL PREDICTOR v2 — Triple-Blend + xG     ║
+            ║    Elo 40% + FIFAForm 25% + GLM 35% + xG real    ║
             ╚══════════════════════════════════════════════════╝""");
 
         // ── 1. Ratings base ───────────────────────────────────────────────────
@@ -48,7 +51,6 @@ public final class QuinielaRunnerV2 {
 
         // ── 2. Historial WC 2026 para el GLM ──────────────────────────────────
         List<TournamentGLM.MatchData> wcHistory = new ArrayList<>(List.of(
-                // JORNADA 1
                 new TournamentGLM.MatchData("Mexico",       "South Africa",         2,0,true),
                 new TournamentGLM.MatchData("South Korea",  "Czech Republic",       2,1,false),
                 new TournamentGLM.MatchData("Canada",       "Bosnia & Herzegovina", 1,1,true),
@@ -73,51 +75,33 @@ public final class QuinielaRunnerV2 {
                 new TournamentGLM.MatchData("Uzbekistan",   "Colombia",             1,3,false),
                 new TournamentGLM.MatchData("England",      "Croatia",              4,2,false),
                 new TournamentGLM.MatchData("Ghana",        "Panama",               1,0,false)
-                // JORNADA 2+ → LiveMatchUpdater los agrega automáticamente
         ));
 
-        // ── 3. LiveMatchUpdater — agrega resultados nuevos aquí cada noche ────
+        // ── 3. LiveMatchUpdater ───────────────────────────────────────────────
         System.out.println("[2/6] Inicializando LiveMatchUpdater...");
         LiveMatchUpdater updater = new LiveMatchUpdater(ratings, wcHistory);
-
-        // JORNADA 2 — RESULTADOS REALES → descomentar y agregar xG cuando se tenga
-        // Formato: updater.matchPlayed(home, away, hg, ag, homeXG, awayXG, homeAdv)
-        // updater.matchPlayed("Czech Republic",        "South Africa",   hg, ag, xgH, xgA, false);
-        // updater.matchPlayed("Mexico",                "South Korea",    hg, ag, xgH, xgA, true);
-        // updater.matchPlayed("Switzerland",           "Bosnia & Herzegovina", hg, ag, xgH, xgA, false);
-        // updater.matchPlayed("Canada",                "Qatar",          hg, ag, xgH, xgA, true);
-        // updater.matchPlayed("Scotland",              "Morocco",        hg, ag, xgH, xgA, false);
-        // updater.matchPlayed("Brazil",                "Haiti",          hg, ag, xgH, xgA, false);
-        // updater.matchPlayed("USA",                   "Australia",      hg, ag, xgH, xgA, true);
-        // updater.matchPlayed("Turkey",                "Paraguay",       hg, ag, xgH, xgA, false);
-        // updater.matchPlayed("Germany",               "Ivory Coast",    hg, ag, xgH, xgA, false);
-        // updater.matchPlayed("Ecuador",               "Curaçao",        hg, ag, xgH, xgA, false);
-        // updater.matchPlayed("Netherlands",           "Sweden",         hg, ag, xgH, xgA, false);
-        // updater.matchPlayed("Tunisia",               "Japan",          hg, ag, xgH, xgA, false);
-        // → seguir con todos los partidos de jornada 2
-
         System.out.printf("  → %d partidos en historial, GLM calibrado%n",
                 updater.matchesRecorded());
 
-        // ── 4. CLASIFICACIÓN ACTUAL (18 Jun 2026) ────────────────────────────
+        // ── 4. CLASIFICACIÓN ACTUAL ───────────────────────────────────────────
         Map<String, Integer> standings = new LinkedHashMap<>();
-        standings.put(StandingsSimulator.US,  17); // Gabriel Marves — 10°
-        standings.put("Rodrigo Lopez",        28); // 1°
-        standings.put("Daniel Ortiz",         24); // 2°
-        standings.put("Nissy Rodriguez",      23); // 3°
-        standings.put("Ruben Figueroa",       22); // 4°
-        standings.put("Jason Avila",          22); // 5°
-        standings.put("Cristhian Brito",      20); // 6°
-        standings.put("Carlos Guevara",       20); // 7°
-        standings.put("Luis Flores",          17); // 8°
-        standings.put("Manuel Molina",        17); // 9°
-        standings.put("Alfredo Funez",        16); // 11°
-        standings.put("Carlos Davis",         16); // 12°
-        standings.put("Jose Pozadas",         15); // 13°
-        standings.put("Daniel Rivera",        14); // 14°
-        standings.put("Moises Chavarria",     14); // 15°
-        standings.put("Hector Cerrato",       13); // 16°
-        standings.put("Jorge Brand",          11); // 17°
+        standings.put(StandingsSimulator.US,  17);
+        standings.put("Rodrigo Lopez",        28);
+        standings.put("Daniel Ortiz",         24);
+        standings.put("Nissy Rodriguez",      23);
+        standings.put("Ruben Figueroa",       22);
+        standings.put("Jason Avila",          22);
+        standings.put("Cristhian Brito",      20);
+        standings.put("Carlos Guevara",       20);
+        standings.put("Luis Flores",          17);
+        standings.put("Manuel Molina",        17);
+        standings.put("Alfredo Funez",        16);
+        standings.put("Carlos Davis",         16);
+        standings.put("Jose Pozadas",         15);
+        standings.put("Daniel Rivera",        14);
+        standings.put("Moises Chavarria",     14);
+        standings.put("Hector Cerrato",       13);
+        standings.put("Jorge Brand",          11);
 
         // ── 5. PERFILES DE RIVALES ────────────────────────────────────────────
         List<RivalProfile> rivals = List.of(
@@ -140,14 +124,12 @@ public final class QuinielaRunnerV2 {
         );
 
         // ── 6. PARTIDOS DE LA JORNADA ─────────────────────────────────────────
-        // → Actualizar con los partidos reales del día siguiente
-        int jornada = 3; // ← CAMBIAR
+        int jornada = 3;
         List<MatchdayEngine.MatchInput> matchday = List.of(
-                new MatchdayEngine.MatchInput("Czech Republic",       "Mexico",              0.0, Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("South Africa",         "South Korea",         0.0, Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("Bosnia & Herzegovina", "Switzerland",         0.0, Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("Qatar",                "Canada",              0.0, Stage.GRUPOS)
-                // → agregar todos los partidos del día aquí
+                new MatchdayEngine.MatchInput("Czech Republic",       "Mexico",       0.0, Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("South Africa",         "South Korea",  0.0, Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("Bosnia & Herzegovina", "Switzerland",  0.0, Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("Qatar",                "Canada",       0.0, Stage.GRUPOS)
         );
 
         // ── 7. ScoreMatrix 500k por partido ──────────────────────────────────
@@ -156,9 +138,7 @@ public final class QuinielaRunnerV2 {
 
         // ── 8. P(podio) con MetaSimulator ────────────────────────────────────
         System.out.println("[4/6] Calculando P(podio) con MetaSimulator...");
-        List<Match> remaining = allMatches.stream()
-                .filter(m -> m.score == null)
-                .toList();
+        List<Match> remaining = allMatches.stream().filter(m -> m.score == null).toList();
 
         Map<String, int[]> ourPredictions = new HashMap<>();
         for (MatchdayEngine.MatchInput m : matchday) {
@@ -170,8 +150,7 @@ public final class QuinielaRunnerV2 {
         }
 
         MetaSimulator.MetaResult meta = MetaSimulator.run(
-                remaining, ratings, ourPredictions, standings, rivals,
-                10_000, 2026L);
+                remaining, ratings, ourPredictions, standings, rivals, 10_000, 2026L);
         meta.print();
 
         // ── 9. StrategyOptimizer ──────────────────────────────────────────────
@@ -190,22 +169,21 @@ public final class QuinielaRunnerV2 {
         long t0 = System.currentTimeMillis();
         StrategyOptimizer.OptimizationResult opt = StrategyOptimizer.optimize(
                 strategyMatches, standings, rivals, Stage.GRUPOS, 3, 5_000, 2026L);
-        System.out.printf("[6/6] Listo en %.1fs%n",
-                (System.currentTimeMillis()-t0)/1000.0);
+        System.out.printf("[6/6] Listo en %.1fs%n", (System.currentTimeMillis()-t0)/1000.0);
 
         opt.print(strategyMatches);
 
         int n = opt.participants();
         System.out.printf("""
 
-  ╔══════════════════════════════════════════════╗
-  ║  PREDICCIONES ÓPTIMAS — COPIAR AL WHATSAPP   ║
-  ║  ⚠️  ENVIAR ANTES DEL PRIMER PARTIDO DEL DÍA  ║
-  ╠══════════════════════════════════════════════╣
-  ║  P(podio torneo completo) = %.1f%%           ║
-  ║  Posición esperada        = %.2f / %d          ║
+  ╔═══════════════════════════════════════════════╗
+  ║  PREDICCIONES ÓPTIMAS — COPIAR AL WHATSAPP    ║
+  ║  ⚠️  ENVIAR ANTES DEL PRIMER PARTIDO DEL DÍA   ║
+  ╠═══════════════════════════════════════════════╣
+  ║  P(podio torneo completo) = %.1f%%            ║
+  ║  Posición esperada        = %.2f / %d         ║
   ║  Ventaja vs base          = +%.1f%%           ║
-  ╚══════════════════════════════════════════════╝%n""",
+  ╚═══════════════════════════════════════════════╝%n""",
                 meta.pPodio()*100, meta.expectedPosition(), n,
                 (meta.pPodio() - 3.0/n)*100);
     }
