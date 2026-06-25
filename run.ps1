@@ -38,31 +38,35 @@ $mvnArgs = @("-q", "compile", "exec:java")
 switch ($Action.ToLower()) {
     "predictions" {
         Write-Host "[ACCION] Generar predicciones para jornada $Jornada" -ForegroundColor Yellow
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2"
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2" -q
     }
     "backtest" {
-        Write-Host "[ACCION] Correr backtest honesto" -ForegroundColor Yellow
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.backtest.BacktestEngine"
+        Write-Host "[ACCION] Correr backtest walk-forward (dataset results.json)" -ForegroundColor Yellow
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.backtest.WorldCupBacktest" -q
     }
     "gridsearch" {
         Write-Host "[ACCION] Grid search de hiperparámetros" -ForegroundColor Yellow
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.backtest.HyperparameterOptimizer"
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.backtest.HyperparameterOptimizer" -q
     }
     "calibrate" {
         Write-Host "[ACCION] Mostrar factores de calibración" -ForegroundColor Yellow
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.ProbabilityCalibrator"
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.ProbabilityCalibrator" -q
     }
     "market" {
         Write-Host "[ACCION] Comparación modelo vs mercado" -ForegroundColor Yellow
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.MarketComparator"
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.MarketComparator" -q
     }
     "reload-xg" {
         Write-Host "[ACCION] Recargar datos xG desde JSON" -ForegroundColor Yellow
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.TournamentConditioner"
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.TournamentConditioner" -q
     }
     "pipeline" {
         Write-Host "[ACCION] Pipeline completo (PipelineRunner)" -ForegroundColor Yellow
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.PipelineRunner"
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.PipelineRunner" -q
+    }
+    "ui" {
+        Write-Host "[ACCION] Lanzar interfaz gráfica JavaFX" -ForegroundColor Yellow
+        & $mvn javafx:run
     }
     "all" {
         Write-Host "`n=== FASE 1: COMPILAR ===" -ForegroundColor Green
@@ -74,16 +78,16 @@ switch ($Action.ToLower()) {
         Write-Host "OK" -ForegroundColor Green
 
         Write-Host "`n=== FASE 2: BACKTEST ===" -ForegroundColor Green
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.backtest.BacktestEngine"
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.prediction.backtest.WorldCupBacktest" -q
 
         Write-Host "`n=== FASE 3: PREDICCIONES ===" -ForegroundColor Green
-        & $mvn @mvnArgs "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2"
+        & $mvn compile exec:java "-Dexec.mainClass=com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2" -q
 
         Write-Host "`n=== COMPLETADO ===" -ForegroundColor Green
         Write-Host "No olvides enviar las predicciones por WhatsApp antes del primer partido!" -ForegroundColor Yellow
     }
     default {
         Write-Host "Acción desconocida: $Action" -ForegroundColor Red
-        Write-Host "Usa: predictions, backtest, gridsearch, calibrate, market, reload-xg, pipeline, all"
+        Write-Host "Usa: predictions, backtest, gridsearch, calibrate, market, reload-xg, pipeline, ui, all"
     }
 }

@@ -1,6 +1,5 @@
 package com.josegabrielmarves.footballpredictor.ui;
 
-import com.formdev.flatlaf.FlatDarkLaf;
 import com.josegabrielmarves.footballpredictor.api.datasource.OpenFootballProvider;
 import com.josegabrielmarves.footballpredictor.model.Match;
 import com.josegabrielmarves.footballpredictor.model.Score;
@@ -11,448 +10,422 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2;
 
-import javax.swing.*;
-import javax.swing.table.*;
-import java.awt.*;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import javafx.application.Platform;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
+import javafx.concurrent.Task;
+import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
+import javafx.geometry.Pos;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 
-public class MainWindow extends JFrame {
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.util.*;
 
-    // ── Colores ───────────────────────────────────────────────────────────────
-    static final Color BG        = new Color(0x0F, 0x12, 0x17);
-    static final Color CARD_BG   = new Color(0x2A, 0x2F, 0x3B);
-    static final Color ACCENT    = new Color(0x00, 0xA3, 0xFF);
-    static final Color GOLD      = new Color(0xFF, 0xD7, 0x00);
-    static final Color TEXT_MAIN = new Color(0xE8, 0xEC, 0xF2);
-    static final Color TEXT_DIM  = new Color(0x9B, 0xA4, 0xB5);
-    static final Color WINNER_BG = new Color(0x00, 0xA3, 0xFF, 45);
-    static final Color DIVIDER   = new Color(0x3A, 0x41, 0x52);
+public class MainWindow extends BorderPane {
 
-    private static final String[] COLUMNS = {
-            "Local","Visitante","Fecha","Grupo / Ronda","Resultado",
-            "Seguro","Exacto arriesgado","Riesgo"
-    };
-    private final DefaultTableModel tableModel;
-    private final JButton btnPredict;
-    private final JLabel statusLabel;
+    static final Color BG      = Color.rgb(15, 18, 23);
+    static final Color CARD_BG = Color.rgb(42, 47, 59);
+    static final Color ACCENT  = Color.rgb(0, 163, 255);
+    static final Color GOLD    = Color.rgb(255, 215, 0);
+    static final Color TXT     = Color.rgb(232, 236, 242);
+    static final Color DIM     = Color.rgb(155, 164, 181);
+    static final Color DIV     = Color.rgb(58, 65, 82);
+
+    private static final String[] COLS =
+        {"Local","Visitante","Fecha","Grupo / Ronda","Resultado","Seguro","Exacto arriesgado","Riesgo"};
+
+    private static class MatchRow {
+        final SimpleStringProperty homeTeam = new SimpleStringProperty();
+        final SimpleStringProperty awayTeam = new SimpleStringProperty();
+        final SimpleStringProperty date     = new SimpleStringProperty();
+        final SimpleStringProperty group    = new SimpleStringProperty();
+        final SimpleStringProperty score    = new SimpleStringProperty();
+        final SimpleStringProperty seguro   = new SimpleStringProperty();
+        final SimpleStringProperty exacto   = new SimpleStringProperty();
+        final SimpleStringProperty riesgo   = new SimpleStringProperty();
+    }
+
+    private final ObservableList<MatchRow> tableData = FXCollections.observableArrayList();
+    private final FilteredList<MatchRow> filteredData;
+    private final TableView<MatchRow> tableView;
+    private final Button btnPredict, btnPipeline;
+    private final Label statusLabel;
+    final BracketView bracketView;
+    private final MatrixPane matrixPane;
+    private final TextArea consoleArea;
+    private final TabPane tabs;
     private List<Match> loadedMatches;
-    private BracketPanel bracketPanel;
-    private MatrixPanel matrixPanel;
-    private static JTextArea consoleArea;
-    private JButton btnPipeline;
-    private JTabbedPane tabs;
 
     public MainWindow() {
-        setTitle("Football Predictor — Quiniela Mundial 2026");
-        setSize(1500, 850);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
+        setBackground(new Background(new BackgroundFill(BG, CornerRadii.EMPTY, Insets.EMPTY)));
 
-        JLabel title = new JLabel("⚽  FOOTBALL PREDICTOR — QUINIELA MUNDIAL 2026", SwingConstants.CENTER);
-        title.setFont(new Font("Arial", Font.BOLD, 20));
-        title.setForeground(TEXT_MAIN);
-        title.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+        Label title = new Label("FOOTBALL PREDICTOR — QUINIELA MUNDIAL 2026");
+        title.setTextFill(TXT);
+        title.setFont(Font.font("Arial", FontWeight.BOLD, 20));
+        title.setPadding(new Insets(10, 0, 10, 0));
+        title.setAlignment(Pos.CENTER);
+        title.setMaxWidth(Double.MAX_VALUE);
 
-        // ── Pestaña Grupos & Bracket ──────────────────────────────────────────
-        bracketPanel = new BracketPanel(this);
-        JScrollPane bracketScroll = new JScrollPane(bracketPanel);
-        bracketScroll.getViewport().setBackground(BG);
-        bracketScroll.setBorder(BorderFactory.createEmptyBorder());
-        bracketScroll.getHorizontalScrollBar().setUnitIncrement(20);
-        bracketScroll.getVerticalScrollBar().setUnitIncrement(20);
+        // ── Tab 1: Groups & Bracket ──
+        bracketView = new BracketView(this);
+        ScrollPane bracketScroll = new ScrollPane(bracketView);
+        bracketScroll.setStyle("-fx-background: #0F1217; -fx-control-inner-background: #0F1217;");
+        bracketScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        bracketScroll.setFitToWidth(true);
 
-        // ── Pestaña Tabla ─────────────────────────────────────────────────────
-        tableModel = new DefaultTableModel(COLUMNS, 0) {
-            @Override public boolean isCellEditable(int r, int c) { return false; }
-        };
-        JTable table = new JTable(tableModel);
-        table.setRowHeight(26);
-        table.setFont(new Font("Consolas", Font.PLAIN, 13));
-        table.getTableHeader().setFont(new Font("Arial", Font.BOLD, 13));
-        table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+        // ── Tab 2: All matches ──
+        tableView = new TableView<>();
+        tableView.setStyle("-fx-base: #1A1E28; -fx-control-inner-background: #1A1E28; -fx-accent: #00A3FF;");
+        for (int i = 0; i < COLS.length; i++) {
+            final int ci = i;
+            TableColumn<MatchRow, String> col = new TableColumn<>(COLS[i]);
+            col.setCellValueFactory(d -> switch (ci) {
+                case 0 -> d.getValue().homeTeam; case 1 -> d.getValue().awayTeam;
+                case 2 -> d.getValue().date;     case 3 -> d.getValue().group;
+                case 4 -> d.getValue().score;    case 5 -> d.getValue().seguro;
+                case 6 -> d.getValue().exacto;   case 7 -> d.getValue().riesgo;
+                default -> null;
+            });
+            tableView.getColumns().add(col);
+        }
+        tableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
 
-        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
-        table.setRowSorter(sorter);
-        sorter.setSortKeys(List.of(new RowSorter.SortKey(2, SortOrder.ASCENDING)));
+        filteredData = new FilteredList<>(tableData, p -> true);
+        tableView.setItems(filteredData);
 
-        JTextField searchField = new JTextField();
-        searchField.setFont(new Font("Arial", Font.PLAIN, 13));
-        JLabel searchLabel = new JLabel("🔍  Buscar: ");
-        searchLabel.setForeground(TEXT_DIM);
-        searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            void filter() {
-                String txt = searchField.getText().trim();
-                if (txt.isEmpty()) sorter.setRowFilter(null);
-                else sorter.setRowFilter(RowFilter.regexFilter("(?i)" + txt));
-            }
-            public void insertUpdate(javax.swing.event.DocumentEvent e)  { filter(); }
-            public void removeUpdate(javax.swing.event.DocumentEvent e)  { filter(); }
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { filter(); }
+        TextField searchField = new TextField();
+        searchField.setPromptText("Buscar equipo...");
+        searchField.setStyle(
+            "-fx-control-inner-background: #2A2F3B; -fx-text-fill: #E8ECF2; -fx-prompt-text-fill: #9BA4B5;");
+        searchField.textProperty().addListener((o, a, v) -> {
+            String q = v == null ? "" : v.trim().toLowerCase();
+            filteredData.setPredicate(r ->
+                q.isEmpty() || r.homeTeam.get().toLowerCase().contains(q)
+                || r.awayTeam.get().toLowerCase().contains(q));
         });
-        JPanel searchBar = new JPanel(new BorderLayout(6, 0));
-        searchBar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
-        searchBar.add(searchLabel, BorderLayout.WEST);
-        searchBar.add(searchField, BorderLayout.CENTER);
 
-        JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.add(searchBar,   BorderLayout.NORTH);
-        tablePanel.add(new JScrollPane(table), BorderLayout.CENTER);
+        VBox tablePanel = new VBox(6, searchField, tableView);
+        tablePanel.setPadding(new Insets(6, 8, 6, 8));
+        VBox.setVgrow(tableView, Priority.ALWAYS);
 
-        // ── Pestaña Matriz 500k ───────────────────────────────────────────────
-        matrixPanel = new MatrixPanel();
+        // ── Tab 3: Matriz 500k ──
+        matrixPane = new MatrixPane();
 
-        // ── Pestaña Consola del Sistema (captura todo lo que iría al CMD) ─────
-        consoleArea = new JTextArea();
+        // ── Tab 4: Console ──
+        consoleArea = new TextArea();
         consoleArea.setEditable(false);
-        consoleArea.setFont(new Font("Consolas", Font.PLAIN, 12));
-        consoleArea.setBackground(new Color(0x12, 0x16, 0x1C));
-        consoleArea.setForeground(new Color(0x9C, 0xDC, 0xFE));
-        JScrollPane consoleScroll = new JScrollPane(consoleArea);
-        consoleScroll.setBorder(BorderFactory.createEmptyBorder());
+        consoleArea.setStyle("-fx-control-inner-background: #12161C; -fx-text-fill: #9CDCFE; -fx-font-family: Consolas; -fx-font-size: 12px;");
         redirectSystemStreams();
 
-        // ── Tabs ──────────────────────────────────────────────────────────────
-        tabs = new JTabbedPane();
-        tabs.setFont(new Font("Arial", Font.BOLD, 13));
-        tabs.addTab("🌍  Grupos & Bracket",   bracketScroll);
-        tabs.addTab("📋  Todos los partidos", tablePanel);
-        tabs.addTab("🎯  Matriz 500k",        matrixPanel);
-        tabs.addTab("🖥️  Consola del Sistema", consoleScroll);
+        // ── Tabs ──
+        tabs = new TabPane();
+        tabs.setStyle("-fx-background: #0F1217; -fx-text-fill: #E8ECF2;");
+        Tab tab1 = new Tab("Grupos & Bracket", bracketScroll);   tab1.setClosable(false);
+        Tab tab2 = new Tab("Todos los partidos", tablePanel);     tab2.setClosable(false);
+        Tab tab3 = new Tab("Matriz 500k", matrixPane);            tab3.setClosable(false);
+        Tab tab4 = new Tab("Consola del Sistema", consoleArea);   tab4.setClosable(false);
+        tabs.getTabs().addAll(tab1, tab2, tab3, tab4);
 
-        btnPredict = new JButton("⚡  Generar Predicciones");
-        btnPredict.setFont(new Font("Arial", Font.BOLD, 13));
-        btnPredict.setEnabled(false);
-        statusLabel = new JLabel("  Cargando fixture 2026...");
-        statusLabel.setForeground(TEXT_DIM);
+        // ── Bottom ──
+        btnPredict = new Button("Generar Predicciones");
+        btnPredict.setStyle("-fx-background-color: #00A3FF; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 18; -fx-background-radius: 4;");
+        btnPredict.setDisable(true);
 
-        btnPipeline = new JButton("▶  Correr Pipeline Completo");
-        btnPipeline.setFont(new Font("Arial", Font.BOLD, 13));
+        btnPipeline = new Button("Correr Pipeline Completo");
+        btnPipeline.setStyle("-fx-background-color: #FFD700; -fx-text-fill: #0F1217; -fx-font-weight: bold; -fx-padding: 8 18; -fx-background-radius: 4;");
 
-        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        btnRow.add(btnPipeline);
-        btnRow.add(btnPredict);
+        statusLabel = new Label("Cargando fixture 2026...");
+        statusLabel.setTextFill(DIM);
+        statusLabel.setFont(Font.font("Arial", 12));
 
-        JPanel bottom = new JPanel(new BorderLayout());
-        bottom.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
-        bottom.add(statusLabel, BorderLayout.WEST);
-        bottom.add(btnRow,      BorderLayout.EAST);
+        HBox bottom = new HBox(10, statusLabel, new Region(), btnPipeline, btnPredict);
+        bottom.setPadding(new Insets(8, 10, 8, 10));
+        bottom.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(bottom.getChildren().get(1), Priority.ALWAYS);
 
-        setLayout(new BorderLayout());
-        add(title,  BorderLayout.NORTH);
-        add(tabs,   BorderLayout.CENTER);
-        add(bottom, BorderLayout.SOUTH);
+        btnPredict.setOnAction(e -> generatePredictions());
+        btnPipeline.setOnAction(e -> runPipeline());
 
-        btnPredict.addActionListener(e -> generatePredictions());
-        btnPipeline.addActionListener(e -> runPipeline());
-        loadFixtureInBackground();
+        setTop(title);
+        setCenter(tabs);
+        setBottom(bottom);
     }
 
-    // ── Carga del fixture ─────────────────────────────────────────────────────
+    // ── Load ──
 
-    void loadFixtureInBackground() {
-        new SwingWorker<List<Match>, Void>() {
-            @Override protected List<Match> doInBackground() throws Exception {
+    public void loadFixture() {
+        Task<List<Match>> t = new Task<>() {
+            @Override protected List<Match> call() throws Exception {
                 return new OpenFootballProvider().getWorldCupMatches(2026);
             }
-            @Override protected void done() {
-                try {
-                    loadedMatches = get();
-                    populateTable(loadedMatches);
-                    bracketPanel.setMatches(loadedMatches, buildRatings());
-                    matrixPanel.setData(loadedMatches, buildRatings());
-                    btnPredict.setEnabled(true);
-                    statusLabel.setText("  ✓ " + loadedMatches.size() +
-                            " partidos cargados — pulsa ⚡ para predicciones");
-                } catch (Exception ex) {
-                    statusLabel.setText("  ✗ Error: " + ex.getMessage());
-                }
-            }
-        }.execute();
+        };
+        t.setOnSucceeded(e -> {
+            loadedMatches = t.getValue();
+            populateTable(loadedMatches);
+            bracketView.setMatches(loadedMatches, buildRatings());
+            matrixPane.setData(loadedMatches, buildRatings());
+            btnPredict.setDisable(false);
+            statusLabel.setText(String.valueOf(loadedMatches.size()) + " partidos cargados");
+        });
+        t.setOnFailed(e -> statusLabel.setText("Error: " + t.getException().getMessage()));
+        new Thread(t).start();
     }
 
-    private void populateTable(List<Match> matches) {
-        tableModel.setRowCount(0);
-        for (Match m : matches) {
-            tableModel.addRow(new Object[]{
-                    m.homeTeam, m.awayTeam, m.date,
-                    m.group != null ? m.group : m.status,
-                    m.score != null ? m.score.toString() : "—",
-                    "—", "—", "—"
-            });
+    private void populateTable(List<Match> ms) {
+        tableData.clear();
+        for (Match m : ms) {
+            MatchRow r = new MatchRow();
+            r.homeTeam.set(m.homeTeam); r.awayTeam.set(m.awayTeam);
+            r.date.set(m.date);         r.group.set(m.group != null ? m.group : m.status);
+            r.score.set(m.score != null ? m.score.toString() : "—");
+            r.seguro.set("—"); r.exacto.set("—"); r.riesgo.set("—");
+            tableData.add(r);
         }
     }
 
-    // ── Predicciones (usa motor de TORNEO: xG + GLM) ──────────────────────────
+    // ── Predictions ──
 
     private void generatePredictions() {
         if (loadedMatches == null) return;
-        btnPredict.setEnabled(false);
-        statusLabel.setText("  Calculando predicciones con motor de torneo...");
-        new SwingWorker<Void, Void>() {
-            @Override protected Void doInBackground() {
+        btnPredict.setDisable(true);
+        statusLabel.setText("Calculando predicciones con motor de torneo...");
+        Task<Void> t = new Task<>() {
+            @Override protected Void call() {
                 Map<String, EloRating> ratings = buildRatings();
                 for (int i = 0; i < loadedMatches.size(); i++) {
-                    Match m  = loadedMatches.get(i);
+                    Match m = loadedMatches.get(i);
                     EloRating h = ratings.getOrDefault(m.homeTeam, EloRating.initial(m.homeTeam));
                     EloRating a = ratings.getOrDefault(m.awayTeam, EloRating.initial(m.awayTeam));
-                    double bonus = isHost(m.homeTeam) ? EloCalculator.HOME_ADVANTAGE : 0.0;
-
+                    double bonus = isHost(m.homeTeam) ? EloCalculator.HOME_ADVANTAGE : 0;
                     MatchEV.DualPick pick = MatchEV.dualPick(m.homeTeam, h, m.awayTeam, a, bonus);
-                    String seguro = String.format("%d-%d (%.0f%%)",
-                            pick.seguro().homeGoals(), pick.seguro().awayGoals(), pick.pSeguro()*100);
-                    String exacto = String.format("%d-%d (%.0f%%)",
-                            pick.exacto().homeGoals(), pick.exacto().awayGoals(), pick.pExacto()*100);
-
-                    final int row = i;
-                    SwingUtilities.invokeLater(() -> {
-                        tableModel.setValueAt(seguro, row, 5);
-                        tableModel.setValueAt(exacto, row, 6);
-                        tableModel.setValueAt(pick.risk().label, row, 7);
+                    String seg = String.format("%d-%d (%.0f%%)", pick.seguro().homeGoals(), pick.seguro().awayGoals(), pick.pSeguro() * 100);
+                    String exc = String.format("%d-%d (%.0f%%)", pick.exacto().homeGoals(), pick.exacto().awayGoals(), pick.pExacto() * 100);
+                    int fi = i;
+                    Platform.runLater(() -> {
+                        MatchRow r = tableData.get(fi);
+                        r.seguro.set(seg); r.exacto.set(exc); r.riesgo.set(pick.risk().label);
                     });
                 }
                 return null;
             }
-            @Override protected void done() {
-                btnPredict.setEnabled(true);
-                statusLabel.setText("  ✓ Predicciones generadas — Seguro=resultado · Exacto=marcador pico");
-            }
-        }.execute();
+        };
+        t.setOnSucceeded(e -> { btnPredict.setDisable(false); statusLabel.setText("Predicciones generadas — Seguro=resultado · Exacto=marcador pico"); });
+        new Thread(t).start();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Pipeline ──
+
+    private void runPipeline() {
+        btnPipeline.setDisable(true);
+        statusLabel.setText("Corriendo pipeline completo...");
+        tabs.getSelectionModel().select(3);
+        consoleArea.clear();
+        Task<Void> t = new Task<>() {
+            @Override protected Void call() {
+                try { QuinielaRunnerV2.run(); }
+                catch (Exception ex) { System.out.println("\n[ERROR] " + ex.getMessage()); ex.printStackTrace(); }
+                return null;
+            }
+        };
+        t.setOnSucceeded(e -> { btnPipeline.setDisable(false); statusLabel.setText("Pipeline completado"); });
+        new Thread(t).start();
+    }
+
+    // ── Console redirection ──
+
+    private void redirectSystemStreams() {
+        OutputStream out = new OutputStream() {
+            @Override public void write(int b) {
+                Platform.runLater(() -> consoleArea.appendText(String.valueOf((char) b)));
+            }
+            @Override public void write(byte[] b, int off, int len) {
+                Platform.runLater(() -> consoleArea.appendText(new String(b, off, len)));
+            }
+        };
+        System.setOut(new PrintStream(out, true));
+        System.setErr(new PrintStream(out, true));
+    }
+
+    // ── Helpers ──
 
     Map<String, EloRating> buildRatings() {
         Map<String, EloRating> r = new HashMap<>();
         if (loadedMatches != null)
-            for (Match m : loadedMatches) {
+            for (Match m : loadedMatches)
                 r.putIfAbsent(m.homeTeam, CalibratedEloRatings.getRating(m.homeTeam));
-                r.putIfAbsent(m.awayTeam, CalibratedEloRatings.getRating(m.awayTeam));
-            }
         return r;
     }
 
     boolean isHost(String t) {
-        return t.equals("Mexico")||t.equals("USA")||t.equals("United States")||t.equals("Canada");
+        return t.equals("Mexico") || t.equals("USA") || t.equals("United States") || t.equals("Canada");
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  Pestaña Matriz 500k — mapa de calor visual
-    // ════════════════════════════════════════════════════════════════════════
-    private static class MatrixPanel extends JPanel {
-        private final DefaultListModel<String> listModel = new DefaultListModel<>();
-        private final JList<String> matchList = new JList<>(listModel);
+    // ═══════════════════════════════════════════════════════════════════
+    //  Matriz 500k — mapa de calor
+    // ═══════════════════════════════════════════════════════════════════
+
+    private class MatrixPane extends BorderPane {
+        private final ListView<String> matchList = new ListView<>();
         private final HeatmapView heatmap = new HeatmapView();
-        private final JLabel info = new JLabel("Selecciona un partido", SwingConstants.CENTER);
+        private final Label info = new Label("Selecciona un partido");
+        private final Map<Integer, ScoreMatrix> cache = new HashMap<>();
         private List<Match> matches;
         private Map<String, EloRating> ratings;
-        private final Map<Integer, ScoreMatrix> cache = new HashMap<>();
 
-        MatrixPanel() {
-            setLayout(new BorderLayout());
-            matchList.setFont(new Font("Consolas", Font.PLAIN, 13));
-            matchList.addListSelectionListener(e -> {
-                if (!e.getValueIsAdjusting()) showMatch(matchList.getSelectedIndex());
+        MatrixPane() {
+            matchList.setStyle("-fx-control-inner-background: #2A2F3B; -fx-text-fill: #E8ECF2;");
+            matchList.setPrefWidth(340);
+            matchList.getSelectionModel().selectedIndexProperty().addListener((o, a, idx) -> {
+                if (idx.intValue() >= 0) showMatch(idx.intValue());
             });
-            JScrollPane listScroll = new JScrollPane(matchList);
-            listScroll.setPreferredSize(new Dimension(340, 0));
 
-            info.setFont(new Font("Arial", Font.BOLD, 17));
-            info.setForeground(TEXT_MAIN);
-            info.setBorder(BorderFactory.createEmptyBorder(12, 0, 12, 0));
+            info.setTextFill(TXT);
+            info.setFont(Font.font("Arial", FontWeight.BOLD, 17));
+            info.setPadding(new Insets(12, 0, 12, 0));
 
-            JPanel right = new JPanel(new BorderLayout());
-            right.add(info, BorderLayout.NORTH);
-            right.add(heatmap, BorderLayout.CENTER);
-
-            add(listScroll, BorderLayout.WEST);
-            add(right, BorderLayout.CENTER);
+            setLeft(matchList);
+            setCenter(new VBox(0, info, heatmap));
+            VBox.setVgrow(heatmap, Priority.ALWAYS);
         }
 
-        void setData(List<Match> matches, Map<String, EloRating> ratings) {
-            this.matches = matches;
-            this.ratings = ratings;
-            listModel.clear();
-            for (Match m : matches) {
+        void setData(List<Match> ms, Map<String, EloRating> r) {
+            matches = ms; ratings = r;
+            matchList.getItems().clear();
+            for (Match m : ms) {
                 if (m.homeTeam == null || m.awayTeam == null) continue;
-                if (m.homeTeam.matches(".*\\d.*")) continue; // saltar placeholders 2A/1E
-                listModel.addElement(m.homeTeam + " vs " + m.awayTeam);
+                if (m.homeTeam.matches(".*\\d.*")) continue;
+                matchList.getItems().add(m.homeTeam + " vs " + m.awayTeam);
             }
-            if (!listModel.isEmpty()) matchList.setSelectedIndex(0);
+            if (!matchList.getItems().isEmpty()) matchList.getSelectionModel().select(0);
         }
 
-        private void showMatch(int idx) {
-            if (idx < 0 || matches == null) return;
-            // mapear índice de lista (filtrada) al match real
+        private void showMatch(int listIdx) {
+            if (listIdx < 0 || matches == null) return;
             int realIdx = -1, count = 0;
             for (int i = 0; i < matches.size(); i++) {
                 Match m = matches.get(i);
-                if (m.homeTeam == null || m.awayTeam == null) continue;
-                if (m.homeTeam.matches(".*\\d.*")) continue;
-                if (count == idx) { realIdx = i; break; }
+                if (m.homeTeam == null || m.awayTeam == null || m.homeTeam.matches(".*\\d.*")) continue;
+                if (count == listIdx) { realIdx = i; break; }
                 count++;
             }
             if (realIdx < 0) return;
-            final int fi = realIdx;
+            int fi = realIdx;
             Match m = matches.get(fi);
             info.setText("Calculando 500.000 simulaciones...");
             heatmap.clear();
 
-            new SwingWorker<ScoreMatrix, Void>() {
-                @Override protected ScoreMatrix doInBackground() {
+            Task<ScoreMatrix> t = new Task<>() {
+                @Override protected ScoreMatrix call() {
                     if (cache.containsKey(fi)) return cache.get(fi);
                     EloRating h = ratings.getOrDefault(m.homeTeam, EloRating.initial(m.homeTeam));
                     EloRating a = ratings.getOrDefault(m.awayTeam, EloRating.initial(m.awayTeam));
-                    double bonus = (m.homeTeam.equals("Mexico")||m.homeTeam.equals("USA")
-                            ||m.homeTeam.equals("Canada")) ? EloCalculator.HOME_ADVANTAGE : 0.0;
+                    double bonus = isHost(m.homeTeam) ? EloCalculator.HOME_ADVANTAGE : 0;
                     ScoreMatrix sm = ScoreMatrix.compute(m.homeTeam, h, m.awayTeam, a, bonus, 42L);
                     cache.put(fi, sm);
                     return sm;
                 }
-                @Override protected void done() {
-                    try {
-                        ScoreMatrix sm = get();
-                        Score modal = sm.mostLikelyScore();
-                        info.setText(String.format(
-                                "<html><span style='color:#E8ECF2;'>%s vs %s</span>" +
-                                        "&nbsp;&nbsp;&nbsp;<span style='color:#00A3FF;'>Local %.0f%%</span>&nbsp;&nbsp;" +
-                                        "<span style='color:#9BA4B5;'>Empate %.0f%%</span>&nbsp;&nbsp;" +
-                                        "<span style='color:#00A3FF;'>Visitante %.0f%%</span>" +
-                                        "&nbsp;&nbsp;&nbsp;<span style='color:#FFD700;'>Exacto pico: %d-%d (%.1f%%)</span></html>",
-                                m.homeTeam, m.awayTeam,
-                                sm.pHomeWin()*100, sm.pDraw()*100, sm.pAwayWin()*100,
-                                modal.homeGoals(), modal.awayGoals(),
-                                sm.probability(modal.homeGoals(), modal.awayGoals())*100));
-                        heatmap.setMatrix(sm, m.homeTeam, m.awayTeam);
-                    } catch (Exception ex) {
-                        info.setText("Error: " + ex.getMessage());
-                    }
-                }
-            }.execute();
+            };
+            t.setOnSucceeded(e -> {
+                ScoreMatrix sm = t.getValue();
+                Score modal = sm.mostLikelyScore();
+                info.setText(String.format(
+                    "%s vs %s  |  Local %.0f%%  Empate %.0f%%  Visitante %.0f%%  |  Pico: %d-%d (%.1f%%)",
+                    m.homeTeam, m.awayTeam,
+                    sm.pHomeWin() * 100, sm.pDraw() * 100, sm.pAwayWin() * 100,
+                    modal.homeGoals(), modal.awayGoals(), sm.probability(modal.homeGoals(), modal.awayGoals()) * 100));
+                heatmap.setMatrix(sm, m.homeTeam, m.awayTeam);
+            });
+            new Thread(t).start();
         }
     }
 
-    // ── Mapa de calor (cuadrícula coloreada) ──────────────────────────────────
-    private static class HeatmapView extends JPanel {
+    private static class HeatmapView extends Pane {
         private ScoreMatrix sm;
         private String homeTeam = "", awayTeam = "";
-        private static final int N = 6; // mostrar 0..5
+        private static final int N = 6;
+        private final Canvas canvas = new Canvas();
+
+        HeatmapView() {
+            canvas.widthProperty().bind(widthProperty());
+            canvas.heightProperty().bind(heightProperty());
+            canvas.widthProperty().addListener(o -> draw());
+            canvas.heightProperty().addListener(o -> draw());
+            getChildren().add(canvas);
+        }
 
         void setMatrix(ScoreMatrix sm, String h, String a) {
-            this.sm = sm; this.homeTeam = h; this.awayTeam = a; repaint();
+            this.sm = sm; this.homeTeam = h; this.awayTeam = a; draw();
         }
-        void clear() { this.sm = null; repaint(); }
+        void clear() { sm = null; draw(); }
 
-        @Override protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
+        private void draw() {
+            GraphicsContext g = canvas.getGraphicsContext2D();
+            g.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
             if (sm == null) return;
-            Graphics2D g2 = (Graphics2D) g;
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            int cell = Math.min((getWidth()-120)/N, (getHeight()-120)/N);
+            double w = canvas.getWidth(), h = canvas.getHeight();
+            int cell = (int) Math.min((w - 120) / N, (h - 120) / N);
             cell = Math.max(48, Math.min(cell, 92));
             int x0 = 90, y0 = 70;
 
-            double max = 0;
-            for (int h=0; h<N; h++) for (int a=0; a<N; a++) max = Math.max(max, sm.probability(h,a));
+            double maxP = 0;
+            for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) maxP = Math.max(maxP, sm.probability(i, j));
 
-            // marcador modal
-            int mh=0, ma=0; double best=-1;
-            for (int h=0; h<N; h++) for (int a=0; a<N; a++)
-                if (sm.probability(h,a)>best){best=sm.probability(h,a);mh=h;ma=a;}
+            int mh = 0, ma = 0;
+            double best = -1;
+            for (int i = 0; i < N; i++) for (int j = 0; j < N; j++)
+                if (sm.probability(i, j) > best) { best = sm.probability(i, j); mh = i; ma = j; }
 
-            g2.setFont(new Font("Arial", Font.BOLD, 13));
-            g2.setColor(ACCENT);
-            g2.drawString(awayTeam + " (goles →)", x0, y0 - 40);
-            // etiqueta vertical
-            g2.rotate(-Math.PI/2);
-            g2.drawString(homeTeam + " (goles →)", -(y0 + N*cell - 10), 30);
-            g2.rotate(Math.PI/2);
+            g.setFont(Font.font("Arial", FontWeight.BOLD, 13));
+            g.setFill(ACCENT);
+            g.fillText(awayTeam + " (goles →)", x0, y0 - 40);
+            // vertical label via rotate
+            g.save();
+            g.translate(25, y0 + N * cell / 2.0);
+            g.rotate(-Math.PI / 2);
+            g.fillText(homeTeam + " (goles →)", 0, 0);
+            g.restore();
 
-            for (int a=0; a<N; a++) {
-                g2.setColor(TEXT_DIM);
-                g2.setFont(new Font("Arial", Font.BOLD, 12));
-                g2.drawString(String.valueOf(a), x0 + a*cell + cell/2 - 4, y0 - 8);
+            for (int a = 0; a < N; a++) {
+                g.setFill(DIM);
+                g.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+                g.fillText(String.valueOf(a), x0 + a * cell + cell / 2.0 - 4, y0 - 8);
             }
-            for (int h=0; h<N; h++) {
-                g2.setColor(TEXT_DIM);
-                g2.drawString(String.valueOf(h), x0 - 24, y0 + h*cell + cell/2 + 5);
+            for (int i = 0; i < N; i++) {
+                g.setFill(DIM);
+                g.fillText(String.valueOf(i), x0 - 24, y0 + i * cell + cell / 2.0 + 5);
             }
 
-            for (int h=0; h<N; h++) {
-                for (int a=0; a<N; a++) {
-                    double p = sm.probability(h,a);
-                    double intensity = max>0 ? p/max : 0;
-                    g2.setColor(new Color(0, (int)(0x60+0x90*intensity), (int)(0x90+0x6F*intensity),
-                            (int)(40+200*intensity)));
-                    g2.fillRoundRect(x0+a*cell+2, y0+h*cell+2, cell-4, cell-4, 8, 8);
+            for (int i = 0; i < N; i++) {
+                for (int j = 0; j < N; j++) {
+                    double p = sm.probability(i, j);
+                    double intensity = maxP > 0 ? p / maxP : 0;
+                    g.setFill(Color.rgb(0, (int) (0x60 + 0x90 * intensity), (int) (0x90 + 0x6F * intensity),
+                        Math.min(1.0, (40 + 200 * intensity) / 255.0)));
+                    g.fillRoundRect(x0 + j * cell + 2, y0 + i * cell + 2, cell - 4, cell - 4, 8, 8);
 
-                    if (h==mh && a==ma) {
-                        g2.setColor(GOLD);
-                        g2.setStroke(new BasicStroke(3));
-                        g2.drawRoundRect(x0+a*cell+2, y0+h*cell+2, cell-4, cell-4, 8, 8);
+                    if (i == mh && j == ma) {
+                        g.setStroke(GOLD);
+                        g.setLineWidth(3);
+                        g.strokeRoundRect(x0 + j * cell + 2, y0 + i * cell + 2, cell - 4, cell - 4, 8, 8);
                     }
-                    g2.setColor(p>max*0.25 ? Color.WHITE : TEXT_DIM);
-                    g2.setFont(new Font("Arial", Font.BOLD, 12));
-                    String sc = h+"-"+a;
-                    g2.drawString(sc, x0+a*cell+cell/2-12, y0+h*cell+cell/2-2);
-                    g2.setFont(new Font("Arial", Font.PLAIN, 11));
-                    String pct = String.format("%.1f%%", p*100);
-                    g2.drawString(pct, x0+a*cell+cell/2-14, y0+h*cell+cell/2+13);
+                    g.setFill(p > maxP * 0.25 ? Color.WHITE : DIM);
+                    g.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+                    g.fillText(i + "-" + j, x0 + j * cell + cell / 2.0 - 12, y0 + i * cell + cell / 2.0 - 2);
+                    g.setFont(Font.font("Arial", FontWeight.NORMAL, 11));
+                    g.fillText(String.format("%.1f%%", p * 100), x0 + j * cell + cell / 2.0 - 14, y0 + i * cell + cell / 2.0 + 13);
                 }
             }
         }
-    }
-
-    // ── Correr pipeline completo (salida → pestaña Consola) ───────────────────
-    private void runPipeline() {
-        btnPipeline.setEnabled(false);
-        statusLabel.setText("  Corriendo pipeline completo... ver pestaña Consola del Sistema");
-        // Abrir la pestaña Consola (índice 3)
-        tabs.setSelectedIndex(3);
-        consoleArea.setText("");
-        new SwingWorker<Void, Void>() {
-            @Override protected Void doInBackground() {
-                try {
-                    QuinielaRunnerV2.run();
-                } catch (Exception ex) {
-                    System.out.println("\n[ERROR] " + ex.getMessage());
-                    ex.printStackTrace();
-                }
-                return null;
-            }
-            @Override protected void done() {
-                btnPipeline.setEnabled(true);
-                statusLabel.setText("  ✓ Pipeline completado — revisa la pestaña Consola del Sistema");
-            }
-        }.execute();
-    }
-
-    // ── Redirección de consola a la pestaña ───────────────────────────────────
-    private static void redirectSystemStreams() {
-        java.io.OutputStream out = new java.io.OutputStream() {
-            @Override public void write(int b) {
-                SwingUtilities.invokeLater(() -> {
-                    consoleArea.append(String.valueOf((char) b));
-                    consoleArea.setCaretPosition(consoleArea.getDocument().getLength());
-                });
-            }
-            @Override public void write(byte[] b, int off, int len) {
-                String s = new String(b, off, len);
-                SwingUtilities.invokeLater(() -> {
-                    consoleArea.append(s);
-                    consoleArea.setCaretPosition(consoleArea.getDocument().getLength());
-                });
-            }
-        };
-        System.setOut(new java.io.PrintStream(out, true));
-        System.setErr(new java.io.PrintStream(out, true));
-    }
-
-    // ── main con FlatLaf ──────────────────────────────────────────────────────
-    public static void main(String[] args) {
-        FlatDarkLaf.setup();
-        SwingUtilities.invokeLater(() -> new MainWindow().setVisible(true));
     }
 }
