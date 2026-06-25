@@ -36,8 +36,9 @@ public final class PoissonPredictor {
     public static final double MIN_LAMBDA        = 0.20;
     public static final double MAX_LAMBDA        = 5.00;
     public static final int    MAX_GOALS         = 9;
-    public static final double DC_RHO            = -0.13; // histórico (backtest)
+    public static final double DC_RHO            = -0.13; // histórico (backtest multi-mundial)
     public static final double DC_RHO_TOURNAMENT = -0.09; // calibrado WC 2026
+    public static final double ELO_GOAL_SCALE    = 740.0; // escala log-link Elo→goles
 
     private static Path     dataFile = Path.of("data/results.json");
     private static LocalDate refDate = null;
@@ -55,9 +56,11 @@ public final class PoissonPredictor {
 
     // ── Lambdas ───────────────────────────────────────────────────────────────
 
-    /** Lambda solo-Elo (compatible con backtest y tests existentes). */
+    /** Lambda solo-Elo con log-link (compatible con backtest y tests existentes). */
     public static double expectedGoalsElo(double rating, double oppRating, double homeBonus) {
-        return clamp(BASE_GOALS + ((rating + homeBonus) - oppRating) / 400.0);
+        double diff = (rating + homeBonus) - oppRating;
+        double logLambda = Math.log(BASE_GOALS) + diff / ELO_GOAL_SCALE;
+        return clamp(Math.exp(logLambda));
     }
 
     /**

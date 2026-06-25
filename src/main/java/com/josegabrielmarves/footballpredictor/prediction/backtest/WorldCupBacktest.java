@@ -98,17 +98,32 @@ public final class WorldCupBacktest {
         }
     }
 
-    /** Punto de entrada: corre backtest sobre 2018 y 2022 e imprime resultados. */
+    /** Punto de entrada: corre backtest sobre 2002-2022 e imprime resultados. */
     public static void main(String[] args) {
-        for (String year : new String[]{"2018", "2022"}) {
+        String[] years = {"2002", "2006", "2010", "2014", "2018", "2022"};
+        double totAcc = 0, totBrier = 0, totRPS = 0;
+        int total = 0;
+        for (String year : years) {
             Path file = Path.of("data/worldcup" + year + ".json");
+            if (!Files.exists(file)) { System.out.printf("%n=== Mundial %s — archivo no encontrado ===%n", year); continue; }
             BacktestMetrics m = run(file);
             System.out.printf("%n=== Mundial %s — %d partidos ===%n", year, m.matches());
             System.out.printf("  Accuracy : %.1f%%%n", m.accuracy() * 100);
             System.out.printf("  Brier    : %.3f%n", m.brier());
             System.out.printf("  Log-loss : %.3f%n", m.logLoss());
             System.out.printf("  RPS      : %.4f%n", m.rps());
+            totAcc += m.accuracy() * m.matches();
+            totBrier += m.brier() * m.matches();
+            totRPS += m.rps() * m.matches();
+            total += m.matches();
         }
-        System.out.println("\n  Referencia dataset B: 62.8% / Brier 0.508 / RPS 0.1685");
+        if (total > 0) {
+            System.out.printf("%n═══════════════════════════════════%n");
+            System.out.printf("  TOTAL (%d partidos, %d mundiales)%n", total, years.length);
+            System.out.printf("  Accuracy media : %.1f%%%n", (totAcc / total) * 100);
+            System.out.printf("  Brier medio    : %.3f%n", totBrier / total);
+            System.out.printf("  RPS medio      : %.4f%n", totRPS / total);
+            System.out.printf("═══════════════════════════════════%n");
+        }
     }
 }

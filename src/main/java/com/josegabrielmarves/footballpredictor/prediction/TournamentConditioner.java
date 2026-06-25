@@ -108,11 +108,20 @@ public final class TournamentConditioner {
         double adjH = lambdaHome * atkH / Math.max(0.4, defA);
         double adjA = lambdaAway * atkA / Math.max(0.4, defH);
 
-        double alpha = 0.40;
+        double alpha = dataAlpha(homeTeam, awayTeam);
         return new double[]{
                 lambdaHome * (1 - alpha) + adjH * alpha,
                 lambdaAway * (1 - alpha) + adjA * alpha
         };
+    }
+
+    /** Peso del xG: crece con más partidos disponibles (0.35→0.75). */
+    private double dataAlpha(String home, String away) {
+        int minN = Math.min(
+                teamData.getOrDefault(normalize(home), Collections.emptyList()).size(),
+                teamData.getOrDefault(normalize(away), Collections.emptyList()).size()
+        );
+        return Math.min(0.75, 0.35 + minN * 0.05);
     }
 
     private String normalize(String t) {

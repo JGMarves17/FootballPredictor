@@ -10,11 +10,14 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Line;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.scene.text.TextAlignment;
 import javafx.util.Duration;
 
 import java.util.*;
@@ -67,6 +70,27 @@ public class BracketView extends VBox {
     private static final int CARD_W = 300, CARD_H = 130;
     private static final int HGAP = 12, VGAP = 10, PAD = 16;
 
+    // ── Bracket layout constants ──
+    private static final double BW = 148;
+    private static final double BH = 36;
+    private static final double BGAP = 4;
+    private static final double SLOT = BH + BGAP;
+    private static final double GAP = 36;
+    private static final double R32_LEFT  = 10;
+    private static final double R16_LEFT  = R32_LEFT + BW + GAP;
+    private static final double QF_LEFT   = R16_LEFT + BW + GAP;
+    private static final double SF_LEFT   = QF_LEFT + BW + GAP;
+    private static final double FINAL_X   = SF_LEFT + BW + GAP;
+    private static final double SF_RIGHT  = FINAL_X + BW + GAP;
+    private static final double QF_RIGHT  = SF_RIGHT + BW + GAP;
+    private static final double R16_RIGHT = QF_RIGHT + BW + GAP;
+    private static final double R32_RIGHT = R16_RIGHT + BW + GAP;
+    private static final double BRACKET_W = R32_RIGHT + BW + 10;
+    private static final double TOP_Y = 16;
+
+    private final VBox bracketContainer = new VBox();
+    private final AnchorPane bracketPane = new AnchorPane();
+
     public BracketView(MainWindow owner) {
         setSpacing(0);
         setStyle("-fx-background-color: #0F1217;");
@@ -82,7 +106,7 @@ public class BracketView extends VBox {
         groupsGrid.setVgap(VGAP);
         groupsGrid.setPadding(new Insets(0, PAD, 0, PAD));
 
-        getChildren().addAll(tt, groupsGrid);
+        getChildren().addAll(tt, groupsGrid, bracketContainer);
     }
 
     public void setMatches(List<Match> ms, Map<String, EloRating> r) {
@@ -206,6 +230,246 @@ public class BracketView extends VBox {
         sep.setAlignment(Pos.CENTER);
         sep.setMaxWidth(Double.MAX_VALUE);
         if (getChildren().size() < 3) getChildren().add(sep);
+
+        renderBracket();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  BRACKET TREE
+    // ═══════════════════════════════════════════════════════════════
+
+    private void renderBracket() {
+        bracketContainer.getChildren().clear();
+        if (leftMatches.isEmpty()) return;
+
+        Label title = new Label("🏆 FASE ELIMINATORIA — PREDICCIÓN DEL TORNEO");
+        title.setTextFill(MainWindow.GOLD);
+        title.setFont(Font.font("Arial", FontWeight.BOLD, 15));
+        title.setPadding(new Insets(14, 0, 2, PAD));
+        title.setMaxWidth(Double.MAX_VALUE);
+        bracketContainer.getChildren().add(title);
+
+        double totalH = 8 * SLOT + 40;
+        bracketPane.setPrefSize(BRACKET_W, totalH);
+        bracketPane.setMinSize(BRACKET_W, totalH);
+        bracketPane.setStyle("-fx-background-color: #0F1217;");
+        bracketPane.getChildren().clear();
+
+        // Round labels
+        double labelTopY = TOP_Y - 4;
+        addRoundLabel("R32", R32_LEFT, labelTopY);
+        addRoundLabel("R16", R16_LEFT, labelTopY);
+        addRoundLabel("QF", QF_LEFT, labelTopY);
+        addRoundLabel("SF", SF_LEFT, labelTopY);
+        addRoundLabel("FINAL", FINAL_X + BW * 0.15, labelTopY);
+        addRoundLabel("SF", SF_RIGHT, labelTopY);
+        addRoundLabel("QF", QF_RIGHT, labelTopY);
+        addRoundLabel("R16", R16_RIGHT, labelTopY);
+        addRoundLabel("R32", R32_RIGHT, labelTopY);
+
+        // ── Left bracket ──
+        for (int i = 0; i < leftMatches.size(); i++) {
+            BracketMatch bm = leftMatches.get(i);
+            bracketPane.getChildren().add(createBracketCard(bm, R32_LEFT, TOP_Y + i * SLOT));
+        }
+
+        List<String> r16L = advanceRound(leftMatches);
+        for (int i = 0; i < r16L.size(); i++)
+            bracketPane.getChildren().add(createTeamLabel(r16L.get(i), R16_LEFT, TOP_Y + (i * 2 + 0.5) * SLOT - BH / 2));
+
+        List<String> qfL = advanceStr(r16L);
+        for (int i = 0; i < qfL.size(); i++)
+            bracketPane.getChildren().add(createTeamLabel(qfL.get(i), QF_LEFT, TOP_Y + (i * 4 + 1) * SLOT - BH / 2));
+
+        String sfL = predictWinner(qfL.get(0), qfL.get(1));
+        bracketPane.getChildren().add(createTeamLabel(sfL, SF_LEFT, TOP_Y + 3.5 * SLOT - BH / 2));
+
+        // ── Right bracket ──
+        for (int i = 0; i < rightMatches.size(); i++) {
+            BracketMatch bm = rightMatches.get(i);
+            bracketPane.getChildren().add(createBracketCard(bm, R32_RIGHT, TOP_Y + i * SLOT));
+        }
+
+        List<String> r16R = advanceRound(rightMatches);
+        for (int i = 0; i < r16R.size(); i++)
+            bracketPane.getChildren().add(createTeamLabel(r16R.get(i), R16_RIGHT, TOP_Y + (i * 2 + 0.5) * SLOT - BH / 2));
+
+        List<String> qfR = advanceStr(r16R);
+        for (int i = 0; i < qfR.size(); i++)
+            bracketPane.getChildren().add(createTeamLabel(qfR.get(i), QF_RIGHT, TOP_Y + (i * 4 + 1) * SLOT - BH / 2));
+
+        String sfR = predictWinner(qfR.get(0), qfR.get(1));
+        bracketPane.getChildren().add(createTeamLabel(sfR, SF_RIGHT, TOP_Y + 3.5 * SLOT - BH / 2));
+
+        // ── Champion ──
+        String champion = predictWinner(sfL, sfR);
+        bracketPane.getChildren().add(createChampionLabel(champion, FINAL_X, TOP_Y + 3.5 * SLOT - 14));
+
+        // ── Connecting lines (drawn first so cards appear on top) ──
+        drawConLines();
+
+        ScrollPane sp = new ScrollPane(bracketPane);
+        sp.setStyle("-fx-background: #0F1217; -fx-control-inner-background: #0F1217;");
+        sp.setPrefHeight(560);
+        sp.setFitToWidth(true);
+        sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        bracketContainer.getChildren().add(sp);
+    }
+
+    private void drawConLines() {
+        double hw = BW / 2;
+        // Left side: R32 -> R16 -> QF -> SF -> Final
+        drawSideLines(R32_LEFT + BW, R16_LEFT, TOP_Y, 8, 4);
+        drawSideLines(R16_LEFT + BW, QF_LEFT, TOP_Y, 4, 2);
+        drawSideLines(QF_LEFT + BW, SF_LEFT, TOP_Y, 2, 1);
+        drawSideLines(SF_LEFT + BW, FINAL_X, TOP_Y, 1, 1);
+        // Right side (mirrored): R32 -> R16 -> QF -> SF -> Final
+        drawSideLinesR(FINAL_X + BW, SF_RIGHT, TOP_Y, 1, 1);
+        drawSideLinesR(SF_RIGHT + BW, QF_RIGHT, TOP_Y, 1, 2);
+        drawSideLinesR(QF_RIGHT + BW, R16_RIGHT, TOP_Y, 2, 4);
+        drawSideLinesR(R16_RIGHT + BW, R32_RIGHT, TOP_Y, 4, 8);
+    }
+
+    private void drawSideLines(double xStart, double xEnd, double top, int nFrom, int nTo) {
+        double stepFrom = SLOT;
+        double stepTo = (nFrom - 1) * stepFrom / Math.max(1, nTo - 1);
+        for (int i = 0; i < nFrom; i += 2) {
+            double y1 = top + i * stepFrom + BH / 2;
+            double y2 = top + (i + 1) * stepFrom + BH / 2;
+            double yM = (y1 + y2) / 2;
+            double midX = (xStart + xEnd) / 2;
+            addLine(xStart, y1, midX, y1);
+            addLine(xStart, y2, midX, y2);
+            addLine(midX, y1, midX, y2);
+            addLine(midX, yM, xEnd, yM);
+        }
+    }
+
+    private void drawSideLinesR(double xStart, double xEnd, double top, int nFrom, int nTo) {
+        double stepFrom = SLOT * nFrom;
+        double stepTo = (nFrom - 1) * stepFrom / Math.max(1, nTo - 1);
+        int pairs = nFrom;
+        for (int i = 0; i < pairs; i += 2) {
+            double y1 = top + (i / 2) * stepFrom + BH / 2;
+            double y2 = top + ((i + 1) / 2) * stepFrom + BH / 2;
+            double yM = (y1 + y2) / 2;
+            double midX = (xStart + xEnd) / 2;
+            addLine(xStart, y1, midX, y1);
+            addLine(xStart, y2, midX, y2);
+            addLine(midX, y1, midX, y2);
+            addLine(midX, yM, xEnd, yM);
+        }
+    }
+
+    private void addLine(double x1, double y1, double x2, double y2) {
+        Line ln = new Line(x1, y1, x2, y2);
+        ln.setStroke(MainWindow.DIV);
+        ln.setStrokeWidth(1.5);
+        bracketPane.getChildren().add(ln);
+    }
+
+    private Node createBracketCard(BracketMatch bm, double x, double y) {
+        String t1 = shorten(bm.t1, 16);
+        String t2 = shorten(bm.t2, 16);
+        String winner = bm.winner;
+
+        VBox card = new VBox(0);
+        card.setLayoutX(x);
+        card.setLayoutY(y);
+        card.setPrefSize(BW, BH);
+        card.setStyle("-fx-background-color: #1A1E28; -fx-background-radius: 4; -fx-border-color: #3A4152; -fx-border-radius: 4; -fx-border-width: 0.5;");
+
+        HBox row1 = new HBox();
+        row1.setPadding(new Insets(1, 6, 0, 6));
+        HBox row2 = new HBox();
+        row2.setPadding(new Insets(0, 6, 1, 6));
+
+        Label l1 = new Label(t1);
+        l1.setTextFill(t1.equals(winner) ? Color.WHITE : MainWindow.DIM);
+        l1.setFont(Font.font("Arial", t1.equals(winner) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
+        l1.setPrefWidth(BW - 70);
+
+        Label vs1 = new Label("vs");
+        vs1.setTextFill(MainWindow.DIM);
+        vs1.setFont(Font.font("Arial", 7));
+        vs1.setPrefWidth(18);
+        vs1.setAlignment(Pos.CENTER);
+        vs1.setStyle("-fx-text-fill: #555;");
+
+        Label l2 = new Label(t2);
+        l2.setTextFill(t2.equals(winner) ? Color.WHITE : MainWindow.DIM);
+        l2.setFont(Font.font("Arial", t2.equals(winner) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
+        l2.setPrefWidth(BW - 70);
+
+        row1.getChildren().addAll(l1, new Label(), l2);
+        HBox.setHgrow(row1.getChildren().get(1), Priority.ALWAYS);
+
+        row2.getChildren().add(new Label());
+        String confStr = winner.equals("?") ? "?" : String.format("%.0f%%", bm.confidence * 100);
+        Label conf = new Label("→ " + winner + " (" + confStr + ")");
+        conf.setTextFill(MainWindow.ACCENT);
+        conf.setFont(Font.font("Arial", FontWeight.BOLD, 9));
+        conf.setAlignment(Pos.CENTER_RIGHT);
+        HBox.setHgrow(conf, Priority.ALWAYS);
+        row2.getChildren().add(conf);
+
+        card.getChildren().addAll(row1, row2);
+        return card;
+    }
+
+    private Node createTeamLabel(String team, double x, double y) {
+        VBox box = new VBox();
+        box.setLayoutX(x);
+        box.setLayoutY(y);
+        box.setPrefSize(BW, BH);
+        box.setStyle("-fx-background-color: #222838; -fx-background-radius: 4; -fx-border-color: #4A5A72; -fx-border-radius: 4; -fx-border-width: 0.5;");
+
+        Label lbl = new Label(shorten(team, 18));
+        lbl.setTextFill(Color.WHITE);
+        lbl.setFont(Font.font("Arial", FontWeight.BOLD, 10));
+        lbl.setAlignment(Pos.CENTER);
+        lbl.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        VBox.setVgrow(lbl, Priority.ALWAYS);
+
+        Tooltip tip = new Tooltip("Clasificado a siguiente ronda");
+        tip.setStyle("-fx-background: #1A1E28; -fx-text-fill: #E8ECF2;");
+        Tooltip.install(box, tip);
+
+        box.getChildren().add(lbl);
+        return box;
+    }
+
+    private Node createChampionLabel(String champ, double x, double y) {
+        VBox box = new VBox();
+        box.setLayoutX(x);
+        box.setLayoutY(y);
+        box.setPrefSize(BW, 40);
+        box.setStyle("-fx-background-color: #2A2010; -fx-background-radius: 6; -fx-border-color: #FFD700; -fx-border-radius: 6; -fx-border-width: 2; -fx-effect: dropshadow(gaussian, rgba(255,215,0,0.3), 8, 0, 0, 0);");
+
+        Label l1 = new Label("🏆 CAMPEÓN");
+        l1.setTextFill(MainWindow.GOLD);
+        l1.setFont(Font.font("Arial", FontWeight.BOLD, 9));
+        l1.setAlignment(Pos.CENTER);
+        l1.setMaxWidth(Double.MAX_VALUE);
+
+        Label l2 = new Label(shorten(champ, 18));
+        l2.setTextFill(Color.WHITE);
+        l2.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+        l2.setAlignment(Pos.CENTER);
+        l2.setMaxWidth(Double.MAX_VALUE);
+
+        box.getChildren().addAll(l1, l2);
+        box.setAlignment(Pos.CENTER);
+        return box;
+    }
+
+    private void addRoundLabel(String text, double x, double y) {
+        Label lbl = new Label(text);
+        lbl.setTextFill(MainWindow.DIM);
+        lbl.setFont(Font.font("Arial", FontWeight.BOLD, 10));
+        lbl.setLayoutX(x + 4);
+        lbl.setLayoutY(y);
+        bracketPane.getChildren().add(lbl);
     }
 
     private Node createGroupCard(String groupName) {
