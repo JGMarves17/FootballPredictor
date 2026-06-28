@@ -84,25 +84,25 @@ public final class QuinielaRunnerV2 {
         System.out.printf("  → %d partidos en historial, GLM calibrado%n",
                 updater.matchesRecorded());
 
-        // ── 4. CLASIFICACIÓN ACTUAL ───────────────────────────────────────────
+        // ── 4. CLASIFICACIÓN ACTUAL (REAL — 24-jun, jornada 3 parcial) ──────
         Map<String, Integer> standings = new LinkedHashMap<>();
-        standings.put(StandingsSimulator.US,  17);
-        standings.put("Rodrigo Lopez",        28);
-        standings.put("Daniel Ortiz",         24);
-        standings.put("Nissy Rodriguez",      23);
-        standings.put("Ruben Figueroa",       22);
-        standings.put("Jason Avila",          22);
-        standings.put("Cristhian Brito",      20);
-        standings.put("Carlos Guevara",       20);
-        standings.put("Luis Flores",          17);
-        standings.put("Manuel Molina",        17);
-        standings.put("Alfredo Funez",        16);
-        standings.put("Carlos Davis",         16);
-        standings.put("Jose Pozadas",         15);
-        standings.put("Daniel Rivera",        14);
-        standings.put("Moises Chavarria",     14);
-        standings.put("Hector Cerrato",       13);
-        standings.put("Jorge Brand",          11);
+        standings.put(StandingsSimulator.US,  19);   // Gabriel Marves
+        standings.put("Rodrigo Lopez",        38);
+        standings.put("Jason Avila",          36);
+        standings.put("Ruben Figueroa",       33);
+        standings.put("Nissy Rodriguez",      31);
+        standings.put("Daniel Ortiz",         31);
+        standings.put("Cristhian Brito",      28);
+        standings.put("Carlos Guevara",       28);
+        standings.put("Hector Cerrato",       27);
+        standings.put("Alfredo Funez",        27);
+        standings.put("Jose Pozadas",         27);
+        standings.put("Carlos Davis",         26);
+        standings.put("Daniel Rivera",        25);
+        standings.put("Moises Chavarria",     25);
+        standings.put("Luis Flores",          24);
+        standings.put("Manuel Molina",        24);
+        standings.put("Jorge Brand",          22);
 
         // ── 5. PERFILES DE RIVALES ────────────────────────────────────────────
         List<RivalProfile> rivals = List.of(
@@ -125,12 +125,13 @@ public final class QuinielaRunnerV2 {
         );
 
         // ── 6. PARTIDOS DE LA JORNADA ─────────────────────────────────────────
+        // ⚠️  Sin bonus hardcodeado — MatchdayEngine.hostBonus() lo calcula solo
         int jornada = 3;
         List<MatchdayEngine.MatchInput> matchday = List.of(
-                new MatchdayEngine.MatchInput("Czech Republic",       "Mexico",       0.0, Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("South Africa",         "South Korea",  0.0, Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("Bosnia & Herzegovina", "Switzerland",  0.0, Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("Qatar",                "Canada",       0.0, Stage.GRUPOS)
+                new MatchdayEngine.MatchInput("Czech Republic",       "Mexico",       Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("South Africa",         "South Korea",  Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("Bosnia & Herzegovina", "Switzerland",  Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("Qatar",                "Canada",       Stage.GRUPOS)
         );
 
         // ── 7. ScoreMatrix 500k por partido ──────────────────────────────────
@@ -143,10 +144,11 @@ public final class QuinielaRunnerV2 {
 
         Map<String, int[]> ourPredictions = new HashMap<>();
         for (MatchdayEngine.MatchInput m : matchday) {
-            EloRating h = ratings.getOrDefault(m.homeTeam(), EloRating.initial(m.homeTeam()));
-            EloRating a = ratings.getOrDefault(m.awayTeam(), EloRating.initial(m.awayTeam()));
-            var score = PoissonPredictor.mostLikelyScore(h, a, m.homeBonus());
-            ourPredictions.put(m.homeTeam() + " vs " + m.awayTeam(),
+            double bonus = MatchdayEngine.hostBonus(m.team1());
+            EloRating h = ratings.getOrDefault(m.team1(), EloRating.initial(m.team1()));
+            EloRating a = ratings.getOrDefault(m.team2(), EloRating.initial(m.team2()));
+            var score = PoissonPredictor.mostLikelyScore(h, a, bonus);
+            ourPredictions.put(m.team1() + " vs " + m.team2(),
                     new int[]{score.homeGoals(), score.awayGoals()});
         }
 
@@ -158,12 +160,13 @@ public final class QuinielaRunnerV2 {
         System.out.println("[5/6] Optimizando estrategia...");
         List<StrategyOptimizer.StrategyMatch> strategyMatches = new ArrayList<>();
         for (MatchdayEngine.MatchInput m : matchday) {
+            double bonus = MatchdayEngine.hostBonus(m.team1());
             strategyMatches.add(new StrategyOptimizer.StrategyMatch(
-                    m.homeTeam(),
-                    ratings.getOrDefault(m.homeTeam(), EloRating.initial(m.homeTeam())),
-                    m.awayTeam(),
-                    ratings.getOrDefault(m.awayTeam(), EloRating.initial(m.awayTeam())),
-                    m.homeBonus()
+                    m.team1(),
+                    ratings.getOrDefault(m.team1(), EloRating.initial(m.team1())),
+                    m.team2(),
+                    ratings.getOrDefault(m.team2(), EloRating.initial(m.team2())),
+                    bonus
             ));
         }
 

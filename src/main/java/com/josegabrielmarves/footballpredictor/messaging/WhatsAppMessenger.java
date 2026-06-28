@@ -49,17 +49,18 @@ public final class WhatsAppMessenger {
 
         for (int i = 0; i < matchday.size(); i++) {
             MatchdayEngine.MatchInput m = matchday.get(i);
+            double bonus = MatchdayEngine.hostBonus(m.team1());
             EloRating hR = homeRatings.get(i);
             EloRating aR = awayRatings.get(i);
-            Score honesto = PoissonPredictor.mostLikelyScore(hR, aR, m.homeBonus());
-            MatchEV.Candidate optimo = MatchEV.best(hR, aR, m.homeBonus(), m.stage());
-            MatchEV.Risk riesgo = MatchEV.risk(hR, aR, m.homeBonus());
+            Score honesto = PoissonPredictor.mostLikelyScore(hR, aR, bonus);
+            MatchEV.Candidate optimo = MatchEV.best(hR, aR, bonus, m.stage());
+            MatchEV.Risk riesgo = MatchEV.risk(hR, aR, bonus);
 
-            double pHome = PoissonPredictor.matchProbabilities(hR, aR, m.homeBonus()).homeWin();
-            double pDraw = PoissonPredictor.matchProbabilities(hR, aR, m.homeBonus()).draw();
-            double pAway = PoissonPredictor.matchProbabilities(hR, aR, m.homeBonus()).awayWin();
+            double pHome = PoissonPredictor.matchProbabilities(hR, aR, bonus).homeWin();
+            double pDraw = PoissonPredictor.matchProbabilities(hR, aR, bonus).draw();
+            double pAway = PoissonPredictor.matchProbabilities(hR, aR, bonus).awayWin();
 
-            sb.append("🏟️ *").append(m.homeTeam()).append("* vs *").append(m.awayTeam()).append("*\n");
+            sb.append("🏟️ *").append(m.team1()).append("* vs *").append(m.team2()).append("*\n");
             sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%", pHome*100, pDraw*100, pAway*100)).append("\n");
             sb.append("   🎯 ").append(optimo.score().homeGoals()).append("-").append(optimo.score().awayGoals());
             sb.append("  (").append(riesgo.label).append(")\n");
@@ -93,13 +94,14 @@ public final class WhatsAppMessenger {
         for (int i = 0; i < matchday.size(); i++) {
             MatchdayEngine.MatchInput m = matchday.get(i);
             StrategyOptimizer.StrategyMatch sm = strategyMatches.get(i);
+            double bonus = MatchdayEngine.hostBonus(m.team1());
             Score p = opt.predictions().get(i);
-            MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), m.homeBonus());
-            double pHome = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), m.homeBonus()).homeWin();
-            double pDraw = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), m.homeBonus()).draw();
-            double pAway = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), m.homeBonus()).awayWin();
+            MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), bonus);
+            double pHome = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), bonus).homeWin();
+            double pDraw = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), bonus).draw();
+            double pAway = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), bonus).awayWin();
 
-            sb.append("🏟️ *").append(m.homeTeam()).append("* vs *").append(m.awayTeam()).append("*\n");
+            sb.append("🏟️ *").append(m.team1()).append("* vs *").append(m.team2()).append("*\n");
             sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%", pHome*100, pDraw*100, pAway*100)).append("\n");
             sb.append("   🎯 *").append(p.homeGoals()).append("-").append(p.awayGoals()).append("*  (").append(riesgo.label).append(")\n");
             sb.append("\n");

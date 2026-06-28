@@ -25,8 +25,19 @@ public final class EnsemblePredictor {
     /** Peso del modelo propio vs mercado. 0.5 = promedio simple. */
     public static final double DEFAULT_ALPHA = 0.5;
 
+    /** Alpha usado en PipelineRunner para comparación modelo vs mercado (15% modelo, 85% mercado). */
+    public static final double ALPHA_MARKET_HEAVY = 0.15;
+
+    /** API key de The Odds — activada para todo el pipeline. */
+    public static final String DEFAULT_API_KEY = "a1d46a53187e24d4f564000bb9319181";
+
     private final OddsProvider oddsProvider;
     private final double alpha;
+
+    /** Crea un EnsemblePredictor con la API key por defecto y alpha=0.15 (mercado pesado). */
+    public EnsemblePredictor() {
+        this(new OddsProvider(DEFAULT_API_KEY), ALPHA_MARKET_HEAVY);
+    }
 
     public EnsemblePredictor(OddsProvider oddsProvider) {
         this(oddsProvider, DEFAULT_ALPHA);
@@ -86,11 +97,15 @@ public final class EnsemblePredictor {
      * API_KEY se pasa como argumento o se hardcodea aquí.
      */
     public static void main(String[] args) {
-        String apiKey = args.length > 0 ? args[0] : System.getenv("ODDS_API_KEY");
+        String apiKey = args.length > 0 ? args[0]
+                : System.getenv("ODDS_API_KEY");
         if (apiKey == null || apiKey.isBlank()) {
-            System.err.println("Provee la API key como argumento o variable ODDS_API_KEY");
-            return;
+            apiKey = DEFAULT_API_KEY;
         }
+        System.out.println("[EnsemblePredictor] API key activada desde " +
+                (args.length > 0 ? "argumento" :
+                 System.getenv("ODDS_API_KEY") != null ? "env ODDS_API_KEY" :
+                 "constante DEFAULT_API_KEY"));
 
         OddsProvider odds = new OddsProvider(apiKey);
         System.out.println("Obteniendo odds del Mundial 2026...");

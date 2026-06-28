@@ -31,11 +31,24 @@ public final class MatchdayEngine {
     private MatchdayEngine() {}
 
     // ── Entrada de datos ──────────────────────────────────────────────────────
+    //
+    // ⚠️  En un Mundial NO hay "local" y "visitante" fijos (salvo sedes).
+    //      Usamos team1/team2 como nombres neutrales. El bonus de sede
+    //      se calcula automáticamente con hostBonus() según el equipo.
+    //
+    public record MatchInput(String team1, String team2, QuinielaScorer.Stage stage) {}
+    public record MatchResult(String team1, String team2, int goals1, int goals2) {}
 
-    public record MatchInput(String homeTeam, String awayTeam,
-                             double homeBonus, QuinielaScorer.Stage stage) {}
+    /** ¿Este equipo juega como sede (México/USA/Canada)? */
+    public static boolean isHost(String team) {
+        return team.equals("Mexico") || team.equals("USA")
+            || team.equals("United States") || team.equals("Canada");
+    }
 
-    public record MatchResult(String homeTeam, String awayTeam, int hg, int ag) {}
+    /** Bonus de localía si el equipo es sede. */
+    public static double hostBonus(String team) {
+        return isHost(team) ? EloCalculator.HOME_ADVANTAGE : 0.0;
+    }
 
     // ── PRE-JORNADA ───────────────────────────────────────────────────────────
 
@@ -61,24 +74,25 @@ public final class MatchdayEngine {
         long seed = today.toEpochDay();
 
         for (MatchInput m : matches) {
-            EloRating home = ratings.getOrDefault(m.homeTeam(),
-                    CalibratedEloRatings.getRating(m.homeTeam()));
-            EloRating away = ratings.getOrDefault(m.awayTeam(),
-                    CalibratedEloRatings.getRating(m.awayTeam()));
+            double bonus = hostBonus(m.team1()); // team1 es local simbólico en el fixture
+            EloRating home = ratings.getOrDefault(m.team1(),
+                    CalibratedEloRatings.getRating(m.team1()));
+            EloRating away = ratings.getOrDefault(m.team2(),
+                    CalibratedEloRatings.getRating(m.team2()));
 
             ScoreMatrix matrix = ScoreMatrix.compute(
-                    m.homeTeam(), home, m.awayTeam(), away,
-                    m.homeBonus(), seed++, ScoreMatrix.DEFAULT_SIMS, m.stage());
+                    m.team1(), home, m.team2(), away,
+                    bonus, seed++, ScoreMatrix.DEFAULT_SIMS, m.stage());
             matrix.print();
 
             // Predicción óptima para quiniela
-            MatchEV.Candidate optimal = MatchEV.best(home, away, m.homeBonus(), m.stage());
-            MatchEV.Risk risk = MatchEV.risk(home, away, m.homeBonus());
+            MatchEV.Candidate optimal = MatchEV.best(home, away, bonus, m.stage());
+            MatchEV.Risk risk = MatchEV.risk(home, away, bonus);
 
             // JSON
             JsonObject jm = new JsonObject();
-            jm.addProperty("home", m.homeTeam());
-            jm.addProperty("away", m.awayTeam());
+            jm.addProperty("home", m.team1());
+            jm.addProperty("away", m.team2());
             jm.addProperty("pHomeWin",  Math.round(matrix.pHomeWin()  * 1000) / 1000.0);
             jm.addProperty("pDraw",     Math.round(matrix.pDraw()     * 1000) / 1000.0);
             jm.addProperty("pAwayWin",  Math.round(matrix.pAwayWin()  * 1000) / 1000.0);
@@ -129,9 +143,9 @@ public final class MatchdayEngine {
         int total = 0, hitResult = 0, hitExact = 0;
 
         for (MatchResult r : results) {
-            String key = r.homeTeam() + ":" + r.awayTeam();
-            String actualResult = r.hg() > r.ag() ? "1" : r.hg() < r.ag() ? "2" : "X";
-            String actualScore  = r.hg() + "-" + r.ag();
+            String key = r.team1() + ":" + r.team2();
+            String actualResult = r.goals1() > r.goals2() ? "1" : r.goals1() < r.goals2() ? "2" : "X";
+            String actualScore  = r.goals1() + "-" + r.goals2();
 
             boolean correctResult = false, correctExact = false;
             String predicted = "?", predictedResult = "?";
@@ -151,22 +165,22 @@ public final class MatchdayEngine {
             if (correctExact)  hitExact++;
             total++;
 
-            System.out.printf("  %s vs %s%n", r.homeTeam(), r.awayTeam());
+            System.out.printf("  %s vs %s%n", r.team1(), r.team2());
             System.out.printf("    Real: %s  |  Predicho: %s  |  %s%n",
                     actualScore, predicted,
                     correctExact  ? "✅ EXACTO" :
                             correctResult ? "🟡 resultado" : "❌ fallo");
 
             // Actualizar Elo
-            EloRating home = ratings.getOrDefault(r.homeTeam(),
-                    CalibratedEloRatings.getRating(r.homeTeam()));
-            EloRating away = ratings.getOrDefault(r.awayTeam(),
-                    CalibratedEloRatings.getRating(r.awayTeam()));
-            double bonus = isHost(r.homeTeam()) ? EloCalculator.HOME_ADVANTAGE : 0.0;
+            EloRating home = ratings.getOrDefault(r.team1(),
+                    CalibratedEloRatings.getRating(r.team1()));
+            EloRating away = ratings.getOrDefault(r.team2(),
+                    CalibratedEloRatings.getRating(r.team2()));
+            double bonus = hostBonus(r.team1()); // team1 es local simbólico
             var updated = EloCalculator.updateRatings(home, away,
-                    r.hg(), r.ag(), EloCalculator.K_WORLD_CUP, bonus);
-            ratings.put(r.homeTeam(), updated.home());
-            ratings.put(r.awayTeam(), updated.away());
+                    r.goals1(), r.goals2(), EloCalculator.K_WORLD_CUP, bonus);
+            ratings.put(r.team1(), updated.home());
+            ratings.put(r.team2(), updated.away());
         }
 
         System.out.printf("%n  ── Jornada %d: %d/%d resultados (%.0f%%) | %d/%d exactos (%.0f%%) ──%n%n",
@@ -209,8 +223,4 @@ public final class MatchdayEngine {
         return result;
     }
 
-    private static boolean isHost(String t) {
-        return t.equals("Mexico") || t.equals("USA")
-                || t.equals("United States") || t.equals("Canada");
-    }
 }

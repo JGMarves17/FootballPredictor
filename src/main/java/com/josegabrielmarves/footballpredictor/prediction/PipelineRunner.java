@@ -82,7 +82,7 @@ public final class PipelineRunner {
         try {
             String apiKey = System.getenv("ODDS_API_KEY");
             if (apiKey == null || apiKey.isBlank()) {
-                apiKey = "a1d46a53187e24d4f564000bb9319181";
+                apiKey = EnsemblePredictor.DEFAULT_API_KEY;
             }
             var oddsProvider = new com.josegabrielmarves.footballpredictor.api.datasource.OddsProvider(apiKey);
             MarketComparator comparator = new MarketComparator(oddsProvider, 0.15);
@@ -104,20 +104,20 @@ public final class PipelineRunner {
         System.out.println("\n[6/7] Generando predicciones...");
         int jornada = 3;
         var matchday = List.of(
-                new MatchdayEngine.MatchInput("Czech Republic", "Mexico", 0.0, com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("South Africa", "South Korea", 0.0, com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("Bosnia & Herzegovina", "Switzerland", 0.0, com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("Qatar", "Canada", 0.0, com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS)
+                new MatchdayEngine.MatchInput("Czech Republic", "Mexico", com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("South Africa", "South Korea", com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("Bosnia & Herzegovina", "Switzerland", com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS),
+                new MatchdayEngine.MatchInput("Qatar", "Canada", com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS)
         );
         MatchdayEngine.preMatchday(jornada, matchday, ratings, today);
 
         // 7. WhatsApp — genera mensaje y copia al portapapeles
         System.out.println("\n[7/7] Generando mensaje de WhatsApp...");
         String msg = WhatsAppMessenger.buildMessage(jornada, matchday,
-                matchday.stream().map(m -> ratings.getOrDefault(m.homeTeam(),
-                        com.josegabrielmarves.footballpredictor.prediction.elo.EloRating.initial(m.homeTeam()))).toList(),
-                matchday.stream().map(m -> ratings.getOrDefault(m.awayTeam(),
-                        com.josegabrielmarves.footballpredictor.prediction.elo.EloRating.initial(m.awayTeam()))).toList());
+                matchday.stream().map(m -> ratings.getOrDefault(m.team1(),
+                        com.josegabrielmarves.footballpredictor.prediction.elo.EloRating.initial(m.team1()))).toList(),
+                matchday.stream().map(m -> ratings.getOrDefault(m.team2(),
+                        com.josegabrielmarves.footballpredictor.prediction.elo.EloRating.initial(m.team2()))).toList());
         WhatsAppMessenger.send(msg, WhatsAppMessenger.Mode.COPY);
 
         // Resumen

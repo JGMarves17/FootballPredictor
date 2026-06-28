@@ -36,7 +36,7 @@ class MatchdayEngineTest {
         assertDoesNotThrow(() -> MatchdayEngine.preMatchday(
                 99,
                 List.of(new MatchdayEngine.MatchInput(
-                        "Spain","Bolivia",0.0,
+                        "Spain","Bolivia",
                         com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage.GRUPOS)),
                 ratings,
                 LocalDate.of(2026, 6, 18)));

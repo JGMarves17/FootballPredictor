@@ -94,6 +94,47 @@ public final class StrategyOptimizer {
             List<RivalProfile> rivals,
             Stage stage,
             int topK, int simPerCombo, long seed) {
+        return optimizeInternal(matches, standings, rivals, stage,
+                topK, simPerCombo, seed, false);
+    }
+
+    /**
+     * Versión ALL-IN del optimizador: maximiza SOLO P(1°) en vez del EV de premio.
+     * <p>
+     * Para alguien que va último (P17), buscar podio es irrelevante — la única
+     * estrategia sensata o es ganar o no importa. ALL-IN:
+     * <ul>
+     *   <li>Función objetivo = P(1°) sin ponderar 2° ni 3°</li>
+     *   <li>Más candidatos por partido (topK×1.5) para incluir opciones de alta varianza</li>
+     *   <li>Prioriza picks poco convencionales que nadie más haría</li>
+     * </ul>
+     *
+     * @see #optimize(List, Map, List, Stage, int, int, long)
+     */
+    public static OptimizationResult optimizeAllIn(
+            List<StrategyMatch> matches,
+            Map<String, Integer> standings,
+            List<RivalProfile> rivals,
+            Stage stage,
+            int topK, int simPerCombo, long seed) {
+        // ALL-IN: más candidatos = más varianza = más chance de remontar
+        int allInTopK = Math.max(5, (int) Math.ceil(topK * 1.5));
+        return optimizeInternal(matches, standings, rivals, stage,
+                allInTopK, simPerCombo, seed, true);
+    }
+
+    /**
+     * Implementación compartida para {@link #optimize} y {@link #optimizeAllIn}.
+     *
+     * @param allIn si es {@code true}, maximiza P(1°) en vez del EV de premio.
+     */
+    private static OptimizationResult optimizeInternal(
+            List<StrategyMatch> matches,
+            Map<String, Integer> standings,
+            List<RivalProfile> rivals,
+            Stage stage,
+            int topK, int simPerCombo, long seed,
+            boolean allIn) {
 
         // Precalcular matrices (evitar recomputar en el loop)
         double[][][] matrices = new double[matches.size()][][];
@@ -115,7 +156,7 @@ public final class StrategyOptimizer {
         // Enumerar todas las combinaciones
         List<List<Score>> combos = combinations(candidatesPerMatch);
         OptimizationResult best = null;
-        double bestPayout = -1.0;
+        double bestScore = -1.0;
 
         for (List<Score> combo : combos) {
             List<JornadaMatch> jornada = new ArrayList<>();
@@ -134,14 +175,19 @@ public final class StrategyOptimizer {
                     standings, jornada, rivals, stage,
                     simPerCombo, seed);
 
-            double payout = expectedPayout(r.p1st(), r.p2nd(), r.p3rd());
+            double score = allIn
+                    ? r.p1st()                                   // ALL-IN: solo P(1°)
+                    : expectedPayout(r.p1st(), r.p2nd(), r.p3rd()); // normal: EV premio
 
-            if (best == null || payout > bestPayout) {
-                bestPayout = payout;
+            if (best == null || score > bestScore) {
+                bestScore = score;
+                String label = allIn ? "ALL-IN" : "ÓPTIMO";
                 best = new OptimizationResult(
                         new ArrayList<>(combo),
                         r.pPodio(), r.p1st(), r.p2nd(), r.p3rd(),
-                        r.expectedPosition(), payout, r.participants(), combos.size());
+                        r.expectedPosition(),
+                        allIn ? r.p1st() : expectedPayout(r.p1st(), r.p2nd(), r.p3rd()),
+                        r.participants(), combos.size());
             }
         }
 
