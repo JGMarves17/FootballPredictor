@@ -1,6 +1,7 @@
 package com.josegabrielmarves.footballpredictor.quiniela;
 
 import com.josegabrielmarves.footballpredictor.api.datasource.OpenFootballProvider;
+import com.josegabrielmarves.footballpredictor.messaging.WhatsAppMessenger;
 import com.josegabrielmarves.footballpredictor.model.Match;
 import com.josegabrielmarves.footballpredictor.prediction.*;
 import com.josegabrielmarves.footballpredictor.prediction.elo.CalibratedEloRatings;
@@ -186,5 +187,10 @@ public final class QuinielaRunnerV2 {
   ╚═══════════════════════════════════════════════╝%n""",
                 meta.pPodio()*100, meta.expectedPosition(), n,
                 (meta.pPodio() - 3.0/n)*100);
+
+        // ── 10. Mensaje WhatsApp ────────────────────────────────────────────────
+        System.out.println("\n[📱] Generando mensaje para WhatsApp...");
+        String waMsg = WhatsAppMessenger.buildMessage(jornada, matchday, opt, strategyMatches);
+        WhatsAppMessenger.send(waMsg);
     }
 }

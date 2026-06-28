@@ -9,6 +9,7 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2;
+import com.josegabrielmarves.footballpredictor.ui.theme.AppTheme;
 
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
@@ -17,7 +18,6 @@ import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -29,20 +29,14 @@ import javafx.scene.text.FontWeight;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class MainWindow extends BorderPane {
 
-    static final Color BG      = Color.rgb(15, 18, 23);
-    static final Color CARD_BG = Color.rgb(42, 47, 59);
-    static final Color ACCENT  = Color.rgb(0, 163, 255);
-    static final Color GOLD    = Color.rgb(255, 215, 0);
-    static final Color TXT     = Color.rgb(232, 236, 242);
-    static final Color DIM     = Color.rgb(155, 164, 181);
-    static final Color DIV     = Color.rgb(58, 65, 82);
-
     private static final String[] COLS =
-        {"Local","Visitante","Fecha","Grupo / Ronda","Resultado","Seguro","Exacto arriesgado","Riesgo"};
+        {"Local", "Visitante", "Fecha", "Grupo / Ronda", "Resultado", "Seguro", "Exacto arriesgado", "Riesgo"};
 
     private static class MatchRow {
         final SimpleStringProperty homeTeam = new SimpleStringProperty();
@@ -67,10 +61,10 @@ public class MainWindow extends BorderPane {
     private List<Match> loadedMatches;
 
     public MainWindow() {
-        setBackground(new Background(new BackgroundFill(BG, CornerRadii.EMPTY, Insets.EMPTY)));
+        setBackground(new Background(new BackgroundFill(AppTheme.BG, CornerRadii.EMPTY, Insets.EMPTY)));
 
         Label title = new Label("FOOTBALL PREDICTOR — QUINIELA MUNDIAL 2026");
-        title.setTextFill(TXT);
+        title.setTextFill(AppTheme.TXT);
         title.setFont(Font.font("Arial", FontWeight.BOLD, 20));
         title.setPadding(new Insets(10, 0, 10, 0));
         title.setAlignment(Pos.CENTER);
@@ -85,28 +79,61 @@ public class MainWindow extends BorderPane {
 
         // ── Tab 2: All matches ──
         tableView = new TableView<>();
-        tableView.setStyle("-fx-base: #1A1E28; -fx-control-inner-background: #1A1E28; -fx-accent: #00A3FF;");
+        tableView.setStyle(AppTheme.tableStyle());
+        tableView.setPlaceholder(new Label("No hay partidos cargados"));
+        tableView.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+
         for (int i = 0; i < COLS.length; i++) {
             final int ci = i;
             TableColumn<MatchRow, String> col = new TableColumn<>(COLS[i]);
+            col.setSortable(true);
             col.setCellValueFactory(d -> switch (ci) {
-                case 0 -> d.getValue().homeTeam; case 1 -> d.getValue().awayTeam;
-                case 2 -> d.getValue().date;     case 3 -> d.getValue().group;
-                case 4 -> d.getValue().score;    case 5 -> d.getValue().seguro;
-                case 6 -> d.getValue().exacto;   case 7 -> d.getValue().riesgo;
+                case 0 -> d.getValue().homeTeam;
+                case 1 -> d.getValue().awayTeam;
+                case 2 -> d.getValue().date;
+                case 3 -> d.getValue().group;
+                case 4 -> d.getValue().score;
+                case 5 -> d.getValue().seguro;
+                case 6 -> d.getValue().exacto;
+                case 7 -> d.getValue().riesgo;
                 default -> null;
             });
+            if (ci == 2) {
+                col.setComparator((a, b) -> {
+                    try {
+                        var f = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                        var d1 = java.time.LocalDate.parse(a, f);
+                        var d2 = java.time.LocalDate.parse(b, f);
+                        return d1.compareTo(d2);
+                    } catch (Exception e) {
+                        return a.compareTo(b);
+                    }
+                });
+            }
             tableView.getColumns().add(col);
         }
         tableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+
+        tableView.setRowFactory(tv -> new TableRow<>() {
+            @Override
+            protected void updateItem(MatchRow item, boolean empty) {
+                super.updateItem(item, empty);
+                if (item == null || empty) {
+                    setStyle("");
+                } else {
+                    setStyle(getIndex() % 2 == 0
+                        ? "-fx-background-color:#1A1E28;"
+                        : "-fx-background-color:#141822;");
+                }
+            }
+        });
 
         filteredData = new FilteredList<>(tableData, p -> true);
         tableView.setItems(filteredData);
 
         TextField searchField = new TextField();
         searchField.setPromptText("Buscar equipo...");
-        searchField.setStyle(
-            "-fx-control-inner-background: #2A2F3B; -fx-text-fill: #E8ECF2; -fx-prompt-text-fill: #9BA4B5;");
+        searchField.setStyle(AppTheme.inputStyle());
         searchField.textProperty().addListener((o, a, v) -> {
             String q = v == null ? "" : v.trim().toLowerCase();
             filteredData.setPredicate(r ->
@@ -124,28 +151,32 @@ public class MainWindow extends BorderPane {
         // ── Tab 4: Console ──
         consoleArea = new TextArea();
         consoleArea.setEditable(false);
-        consoleArea.setStyle("-fx-control-inner-background: #12161C; -fx-text-fill: #9CDCFE; -fx-font-family: Consolas; -fx-font-size: 12px;");
+        consoleArea.setStyle(AppTheme.consoleStyle());
         redirectSystemStreams();
 
         // ── Tabs ──
         tabs = new TabPane();
         tabs.setStyle("-fx-background: #0F1217; -fx-text-fill: #E8ECF2;");
-        Tab tab1 = new Tab("Grupos & Bracket", bracketScroll);   tab1.setClosable(false);
-        Tab tab2 = new Tab("Todos los partidos", tablePanel);     tab2.setClosable(false);
-        Tab tab3 = new Tab("Matriz 500k", matrixPane);            tab3.setClosable(false);
-        Tab tab4 = new Tab("Consola del Sistema", consoleArea);   tab4.setClosable(false);
+        Tab tab1 = new Tab("Grupos & Bracket", bracketScroll);
+        tab1.setClosable(false);
+        Tab tab2 = new Tab("Todos los partidos", tablePanel);
+        tab2.setClosable(false);
+        Tab tab3 = new Tab("Matriz 500k", matrixPane);
+        tab3.setClosable(false);
+        Tab tab4 = new Tab("Consola del Sistema", consoleArea);
+        tab4.setClosable(false);
         tabs.getTabs().addAll(tab1, tab2, tab3, tab4);
 
         // ── Bottom ──
         btnPredict = new Button("Generar Predicciones");
-        btnPredict.setStyle("-fx-background-color: #00A3FF; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 18; -fx-background-radius: 4;");
+        btnPredict.setStyle(AppTheme.primaryButtonStyle());
         btnPredict.setDisable(true);
 
         btnPipeline = new Button("Correr Pipeline Completo");
-        btnPipeline.setStyle("-fx-background-color: #FFD700; -fx-text-fill: #0F1217; -fx-font-weight: bold; -fx-padding: 8 18; -fx-background-radius: 4;");
+        btnPipeline.setStyle(AppTheme.goldButtonStyle());
 
         statusLabel = new Label("Cargando fixture 2026...");
-        statusLabel.setTextFill(DIM);
+        statusLabel.setTextFill(AppTheme.DIM);
         statusLabel.setFont(Font.font("Arial", 12));
 
         HBox bottom = new HBox(10, statusLabel, new Region(), btnPipeline, btnPredict);
@@ -165,17 +196,19 @@ public class MainWindow extends BorderPane {
 
     public void loadFixture() {
         Task<List<Match>> t = new Task<>() {
-            @Override protected List<Match> call() throws Exception {
+            @Override
+            protected List<Match> call() throws Exception {
                 return new OpenFootballProvider().getWorldCupMatches(2026);
             }
         };
         t.setOnSucceeded(e -> {
             loadedMatches = t.getValue();
+            loadedMatches.sort(Comparator.comparing(m -> m.date));
             populateTable(loadedMatches);
             bracketView.setMatches(loadedMatches, buildRatings());
             matrixPane.setData(loadedMatches, buildRatings());
             btnPredict.setDisable(false);
-            statusLabel.setText(String.valueOf(loadedMatches.size()) + " partidos cargados");
+            statusLabel.setText(loadedMatches.size() + " partidos cargados");
         });
         t.setOnFailed(e -> statusLabel.setText("Error: " + t.getException().getMessage()));
         new Thread(t).start();
@@ -185,10 +218,14 @@ public class MainWindow extends BorderPane {
         tableData.clear();
         for (Match m : ms) {
             MatchRow r = new MatchRow();
-            r.homeTeam.set(m.homeTeam); r.awayTeam.set(m.awayTeam);
-            r.date.set(m.date);         r.group.set(m.group != null ? m.group : m.status);
+            r.homeTeam.set(m.homeTeam);
+            r.awayTeam.set(m.awayTeam);
+            r.date.set(m.date);
+            r.group.set(m.group != null ? m.group : m.status);
             r.score.set(m.score != null ? m.score.toString() : "—");
-            r.seguro.set("—"); r.exacto.set("—"); r.riesgo.set("—");
+            r.seguro.set("—");
+            r.exacto.set("—");
+            r.riesgo.set("—");
             tableData.add(r);
         }
     }
@@ -200,7 +237,8 @@ public class MainWindow extends BorderPane {
         btnPredict.setDisable(true);
         statusLabel.setText("Calculando predicciones con motor de torneo...");
         Task<Void> t = new Task<>() {
-            @Override protected Void call() {
+            @Override
+            protected Void call() {
                 Map<String, EloRating> ratings = buildRatings();
                 for (int i = 0; i < loadedMatches.size(); i++) {
                     Match m = loadedMatches.get(i);
@@ -213,13 +251,18 @@ public class MainWindow extends BorderPane {
                     int fi = i;
                     Platform.runLater(() -> {
                         MatchRow r = tableData.get(fi);
-                        r.seguro.set(seg); r.exacto.set(exc); r.riesgo.set(pick.risk().label);
+                        r.seguro.set(seg);
+                        r.exacto.set(exc);
+                        r.riesgo.set(pick.risk().label);
                     });
                 }
                 return null;
             }
         };
-        t.setOnSucceeded(e -> { btnPredict.setDisable(false); statusLabel.setText("Predicciones generadas — Seguro=resultado · Exacto=marcador pico"); });
+        t.setOnSucceeded(e -> {
+            btnPredict.setDisable(false);
+            statusLabel.setText("Predicciones generadas — Seguro=resultado · Exacto=marcador pico");
+        });
         new Thread(t).start();
     }
 
@@ -231,13 +274,21 @@ public class MainWindow extends BorderPane {
         tabs.getSelectionModel().select(3);
         consoleArea.clear();
         Task<Void> t = new Task<>() {
-            @Override protected Void call() {
-                try { QuinielaRunnerV2.run(); }
-                catch (Exception ex) { System.out.println("\n[ERROR] " + ex.getMessage()); ex.printStackTrace(); }
+            @Override
+            protected Void call() {
+                try {
+                    QuinielaRunnerV2.run();
+                } catch (Exception ex) {
+                    System.out.println("\n[ERROR] " + ex.getMessage());
+                    ex.printStackTrace();
+                }
                 return null;
             }
         };
-        t.setOnSucceeded(e -> { btnPipeline.setDisable(false); statusLabel.setText("Pipeline completado"); });
+        t.setOnSucceeded(e -> {
+            btnPipeline.setDisable(false);
+            statusLabel.setText("Pipeline completado");
+        });
         new Thread(t).start();
     }
 
@@ -245,10 +296,13 @@ public class MainWindow extends BorderPane {
 
     private void redirectSystemStreams() {
         OutputStream out = new OutputStream() {
-            @Override public void write(int b) {
+            @Override
+            public void write(int b) {
                 Platform.runLater(() -> consoleArea.appendText(String.valueOf((char) b)));
             }
-            @Override public void write(byte[] b, int off, int len) {
+
+            @Override
+            public void write(byte[] b, int off, int len) {
                 Platform.runLater(() -> consoleArea.appendText(new String(b, off, len)));
             }
         };
@@ -283,13 +337,13 @@ public class MainWindow extends BorderPane {
         private Map<String, EloRating> ratings;
 
         MatrixPane() {
-            matchList.setStyle("-fx-control-inner-background: #2A2F3B; -fx-text-fill: #E8ECF2;");
+            matchList.setStyle(AppTheme.inputStyle());
             matchList.setPrefWidth(340);
             matchList.getSelectionModel().selectedIndexProperty().addListener((o, a, idx) -> {
                 if (idx.intValue() >= 0) showMatch(idx.intValue());
             });
 
-            info.setTextFill(TXT);
+            info.setTextFill(AppTheme.TXT);
             info.setFont(Font.font("Arial", FontWeight.BOLD, 17));
             info.setPadding(new Insets(12, 0, 12, 0));
 
@@ -299,7 +353,8 @@ public class MainWindow extends BorderPane {
         }
 
         void setData(List<Match> ms, Map<String, EloRating> r) {
-            matches = ms; ratings = r;
+            matches = ms;
+            ratings = r;
             matchList.getItems().clear();
             for (Match m : ms) {
                 if (m.homeTeam == null || m.awayTeam == null) continue;
@@ -315,7 +370,10 @@ public class MainWindow extends BorderPane {
             for (int i = 0; i < matches.size(); i++) {
                 Match m = matches.get(i);
                 if (m.homeTeam == null || m.awayTeam == null || m.homeTeam.matches(".*\\d.*")) continue;
-                if (count == listIdx) { realIdx = i; break; }
+                if (count == listIdx) {
+                    realIdx = i;
+                    break;
+                }
                 count++;
             }
             if (realIdx < 0) return;
@@ -325,7 +383,8 @@ public class MainWindow extends BorderPane {
             heatmap.clear();
 
             Task<ScoreMatrix> t = new Task<>() {
-                @Override protected ScoreMatrix call() {
+                @Override
+                protected ScoreMatrix call() {
                     if (cache.containsKey(fi)) return cache.get(fi);
                     EloRating h = ratings.getOrDefault(m.homeTeam, EloRating.initial(m.homeTeam));
                     EloRating a = ratings.getOrDefault(m.awayTeam, EloRating.initial(m.awayTeam));
@@ -364,9 +423,16 @@ public class MainWindow extends BorderPane {
         }
 
         void setMatrix(ScoreMatrix sm, String h, String a) {
-            this.sm = sm; this.homeTeam = h; this.awayTeam = a; draw();
+            this.sm = sm;
+            this.homeTeam = h;
+            this.awayTeam = a;
+            draw();
         }
-        void clear() { sm = null; draw(); }
+
+        void clear() {
+            sm = null;
+            draw();
+        }
 
         private void draw() {
             GraphicsContext g = canvas.getGraphicsContext2D();
@@ -379,17 +445,23 @@ public class MainWindow extends BorderPane {
             int x0 = 90, y0 = 70;
 
             double maxP = 0;
-            for (int i = 0; i < N; i++) for (int j = 0; j < N; j++) maxP = Math.max(maxP, sm.probability(i, j));
+            for (int i = 0; i < N; i++)
+                for (int j = 0; j < N; j++)
+                    maxP = Math.max(maxP, sm.probability(i, j));
 
             int mh = 0, ma = 0;
             double best = -1;
-            for (int i = 0; i < N; i++) for (int j = 0; j < N; j++)
-                if (sm.probability(i, j) > best) { best = sm.probability(i, j); mh = i; ma = j; }
+            for (int i = 0; i < N; i++)
+                for (int j = 0; j < N; j++)
+                    if (sm.probability(i, j) > best) {
+                        best = sm.probability(i, j);
+                        mh = i;
+                        ma = j;
+                    }
 
             g.setFont(Font.font("Arial", FontWeight.BOLD, 13));
-            g.setFill(ACCENT);
+            g.setFill(AppTheme.ACCENT);
             g.fillText(awayTeam + " (goles →)", x0, y0 - 40);
-            // vertical label via rotate
             g.save();
             g.translate(25, y0 + N * cell / 2.0);
             g.rotate(-Math.PI / 2);
@@ -397,12 +469,12 @@ public class MainWindow extends BorderPane {
             g.restore();
 
             for (int a = 0; a < N; a++) {
-                g.setFill(DIM);
+                g.setFill(AppTheme.DIM);
                 g.setFont(Font.font("Arial", FontWeight.BOLD, 12));
                 g.fillText(String.valueOf(a), x0 + a * cell + cell / 2.0 - 4, y0 - 8);
             }
             for (int i = 0; i < N; i++) {
-                g.setFill(DIM);
+                g.setFill(AppTheme.DIM);
                 g.fillText(String.valueOf(i), x0 - 24, y0 + i * cell + cell / 2.0 + 5);
             }
 
@@ -415,11 +487,11 @@ public class MainWindow extends BorderPane {
                     g.fillRoundRect(x0 + j * cell + 2, y0 + i * cell + 2, cell - 4, cell - 4, 8, 8);
 
                     if (i == mh && j == ma) {
-                        g.setStroke(GOLD);
+                        g.setStroke(AppTheme.GOLD);
                         g.setLineWidth(3);
                         g.strokeRoundRect(x0 + j * cell + 2, y0 + i * cell + 2, cell - 4, cell - 4, 8, 8);
                     }
-                    g.setFill(p > maxP * 0.25 ? Color.WHITE : DIM);
+                    g.setFill(p > maxP * 0.25 ? Color.WHITE : AppTheme.DIM);
                     g.setFont(Font.font("Arial", FontWeight.BOLD, 12));
                     g.fillText(i + "-" + j, x0 + j * cell + cell / 2.0 - 12, y0 + i * cell + cell / 2.0 - 2);
                     g.setFont(Font.font("Arial", FontWeight.NORMAL, 11));

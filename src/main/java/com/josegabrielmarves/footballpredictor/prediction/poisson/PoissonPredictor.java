@@ -3,6 +3,7 @@ package com.josegabrielmarves.footballpredictor.prediction.poisson;
 import com.josegabrielmarves.footballpredictor.model.Score;
 import com.josegabrielmarves.footballpredictor.prediction.FIFAFormCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.TournamentConditioner;
+import com.josegabrielmarves.footballpredictor.prediction.ProbabilityCalibrator;
 import com.josegabrielmarves.footballpredictor.prediction.TournamentGLM;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage;
@@ -43,12 +44,14 @@ public final class PoissonPredictor {
     private static Path     dataFile = Path.of("data/results.json");
     private static LocalDate refDate = null;
     private static TournamentGLM glm = null;
+    private static ProbabilityCalibrator calibrator = null;
 
     private PoissonPredictor() {}
 
     public static void setDataFile(Path path) { dataFile = path; }
     public static void setRefDate(LocalDate d) { refDate = d; }
     public static void setGLM(TournamentGLM g) { glm = g; }
+    public static void setCalibrator(ProbabilityCalibrator cal) { calibrator = cal; }
 
     private static LocalDate today() {
         return refDate != null ? refDate : LocalDate.now();
@@ -233,9 +236,18 @@ public final class PoissonPredictor {
     }
 
     public static MatchProbabilities matchProbabilitiesTournament(String homeTeam, EloRating home,
-                                                                   String awayTeam, EloRating away,
-                                                                   double homeBonus, Stage stage) {
+                                                                    String awayTeam, EloRating away,
+                                                                    double homeBonus, Stage stage) {
         return aggregateProbs(scoreMatrixTournament(homeTeam, home, awayTeam, away, homeBonus, stage));
+    }
+
+    public static MatchProbabilities matchProbabilitiesCalibrated(
+            String homeTeam, EloRating home, String awayTeam, EloRating away,
+            double homeBonus, Stage stage) {
+        MatchProbabilities raw = matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, stage);
+        if (calibrator == null) return raw;
+        double[] cal = calibrator.calibratePlatt(raw.homeWin(), raw.draw(), raw.awayWin());
+        return new MatchProbabilities(cal[0], cal[1], cal[2]);
     }
 
     private static MatchProbabilities aggregateProbs(double[][] m) {

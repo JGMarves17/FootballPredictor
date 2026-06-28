@@ -14,6 +14,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
+/**
+ * @deprecated Usar {@link RhoOptimizer} + {@link BacktestPipeline} en su lugar.
+ *             Esta clase solo evalúa Elo puro (no Triple Blend) y no soporta
+ *             PipelineConfig ni análisis por segmento.
+ */
+@Deprecated
 public final class HyperparameterOptimizer {
 
     private HyperparameterOptimizer() {}

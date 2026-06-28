@@ -3,6 +3,7 @@ package com.josegabrielmarves.footballpredictor.ui;
 import com.josegabrielmarves.footballpredictor.model.Match;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
+import com.josegabrielmarves.footballpredictor.ui.theme.AppTheme;
 
 import javafx.animation.FadeTransition;
 import javafx.concurrent.Task;
@@ -17,7 +18,6 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import javafx.scene.text.TextAlignment;
 import javafx.util.Duration;
 
 import java.util.*;
@@ -25,38 +25,43 @@ import java.util.*;
 public class BracketView extends VBox {
 
     private static final Map<String, Color> GCOLOR = new LinkedHashMap<>();
+
     static {
-        GCOLOR.put("Group A", Color.rgb(0x27,0xAE,0x60));
-        GCOLOR.put("Group B", Color.rgb(0xC0,0x39,0x2B));
-        GCOLOR.put("Group C", Color.rgb(0xE6,0x7E,0x22));
-        GCOLOR.put("Group D", Color.rgb(0x1A,0x5C,0x9E));
-        GCOLOR.put("Group E", Color.rgb(0x8E,0x44,0xAD));
-        GCOLOR.put("Group F", Color.rgb(0x17,0x9E,0x86));
-        GCOLOR.put("Group G", Color.rgb(0x92,0x2B,0x21));
-        GCOLOR.put("Group H", Color.rgb(0x1E,0x84,0x49));
-        GCOLOR.put("Group I", Color.rgb(0x6C,0x34,0x83));
-        GCOLOR.put("Group J", Color.rgb(0x1A,0x52,0x76));
-        GCOLOR.put("Group K", Color.rgb(0xD3,0x54,0x00));
-        GCOLOR.put("Group L", Color.rgb(0x7D,0x66,0x08));
+        GCOLOR.put("Group A", Color.rgb(0x27, 0xAE, 0x60));
+        GCOLOR.put("Group B", Color.rgb(0xC0, 0x39, 0x2B));
+        GCOLOR.put("Group C", Color.rgb(0xE6, 0x7E, 0x22));
+        GCOLOR.put("Group D", Color.rgb(0x1A, 0x5C, 0x9E));
+        GCOLOR.put("Group E", Color.rgb(0x8E, 0x44, 0xAD));
+        GCOLOR.put("Group F", Color.rgb(0x17, 0x9E, 0x86));
+        GCOLOR.put("Group G", Color.rgb(0x92, 0x2B, 0x21));
+        GCOLOR.put("Group H", Color.rgb(0x1E, 0x84, 0x49));
+        GCOLOR.put("Group I", Color.rgb(0x6C, 0x34, 0x83));
+        GCOLOR.put("Group J", Color.rgb(0x1A, 0x52, 0x76));
+        GCOLOR.put("Group K", Color.rgb(0xD3, 0x54, 0x00));
+        GCOLOR.put("Group L", Color.rgb(0x7D, 0x66, 0x08));
     }
+
     private static final String[] GROUP_ORDER = {
-        "Group A","Group B","Group C","Group D",
-        "Group E","Group F","Group G","Group H",
-        "Group I","Group J","Group K","Group L"
+        "Group A", "Group B", "Group C", "Group D",
+        "Group E", "Group F", "Group G", "Group H",
+        "Group I", "Group J", "Group K", "Group L"
     };
 
     private static final String[][] LEFT_R32 = {
-        {"1E","3ABCDF"},{"1I","3CDFGH"},{"2A","2B"},{"1F","2C"},
-        {"1C","2F"},{"2E","2I"},{"1A","3CEFHI"},{"1L","3EHIJK"}
+        {"1E", "3ABCDF"}, {"1I", "3CDFGH"}, {"2A", "2B"}, {"1F", "2C"},
+        {"1C", "2F"}, {"2E", "2I"}, {"1A", "3CEFHI"}, {"1L", "3EHIJK"}
     };
     private static final String[][] RIGHT_R32 = {
-        {"2K","2L"},{"1H","2J"},{"1D","3BEFIJ"},{"1G","3AEHIJ"},
-        {"1J","2H"},{"2D","2G"},{"1B","3EFGIJ"},{"1K","3DEIJL"}
+        {"2K", "2L"}, {"1H", "2J"}, {"1D", "3BEFIJ"}, {"1G", "3AEHIJ"},
+        {"1J", "2H"}, {"2D", "2G"}, {"1B", "3EFGIJ"}, {"1K", "3DEIJL"}
     };
 
     private record TeamRow(String name, int played, int pts, int gf, int ga) {
-        int gd() { return gf - ga; }
+        int gd() {
+            return gf - ga;
+        }
     }
+
     private record BracketMatch(String t1, String t2, String winner, double confidence) {}
 
     private final Map<String, List<TeamRow>> groupData = new LinkedHashMap<>();
@@ -64,13 +69,11 @@ public class BracketView extends VBox {
     private final List<BracketMatch> leftMatches  = new ArrayList<>();
     private final List<BracketMatch> rightMatches = new ArrayList<>();
     private final GridPane groupsGrid = new GridPane();
-    private final Label champLabel = new Label("?");
     private String predictedChampion = "?";
 
     private static final int CARD_W = 300, CARD_H = 130;
     private static final int HGAP = 12, VGAP = 10, PAD = 16;
 
-    // ── Bracket layout constants ──
     private static final double BW = 148;
     private static final double BH = 36;
     private static final double BGAP = 4;
@@ -96,7 +99,7 @@ public class BracketView extends VBox {
         setStyle("-fx-background-color: #0F1217;");
 
         Label tt = new Label("FIFA WORLD CUP 2026 — FASE DE GRUPOS");
-        tt.setTextFill(MainWindow.GOLD);
+        tt.setTextFill(AppTheme.GOLD);
         tt.setFont(Font.font("Arial", FontWeight.BOLD, 17));
         tt.setPadding(new Insets(10, 0, 8, 0));
         tt.setAlignment(Pos.CENTER);
@@ -112,7 +115,8 @@ public class BracketView extends VBox {
     public void setMatches(List<Match> ms, Map<String, EloRating> r) {
         ratings = r;
         Task<Void> t = new Task<>() {
-            @Override protected Void call() {
+            @Override
+            protected Void call() {
                 computeGroupData(ms);
                 predictBracket();
                 return null;
@@ -121,7 +125,9 @@ public class BracketView extends VBox {
         t.setOnSucceeded(e -> {
             renderGroups();
             FadeTransition ft = new FadeTransition(Duration.millis(400), BracketView.this);
-            ft.setFromValue(0.3); ft.setToValue(1.0); ft.play();
+            ft.setFromValue(0.3);
+            ft.setToValue(1.0);
+            ft.play();
         });
         new Thread(t).start();
     }
@@ -136,21 +142,30 @@ public class BracketView extends VBox {
             if (m.score != null) {
                 int hg = m.score.homeGoals(), ag = m.score.awayGoals();
                 int[] h = g.get(m.homeTeam), a = g.get(m.awayTeam);
-                h[1]+=hg; h[2]+=ag; h[3]++;
-                a[1]+=ag; a[2]+=hg; a[3]++;
-                if (hg>ag) h[0]+=3; else if (ag>hg) a[0]+=3; else { h[0]++; a[0]++; }
+                h[1] += hg;
+                h[2] += ag;
+                h[3]++;
+                a[1] += ag;
+                a[2] += hg;
+                a[3]++;
+                if (hg > ag) h[0] += 3;
+                else if (ag > hg) a[0] += 3;
+                else {
+                    h[0]++;
+                    a[0]++;
+                }
             }
         }
         groupData.clear();
         for (String gn : GROUP_ORDER) {
-            Map<String,int[]> g = raw.get(gn);
+            Map<String, int[]> g = raw.get(gn);
             if (g == null) continue;
             List<TeamRow> rows = new ArrayList<>();
-            g.forEach((t,s) -> rows.add(new TeamRow(t, s[3], s[0], s[1], s[2])));
-            rows.sort((a,b) -> {
-                if (b.pts()!=a.pts()) return b.pts()-a.pts();
-                if (b.gd()!=a.gd())  return b.gd()-a.gd();
-                if (b.gf()!=a.gf())  return b.gf()-a.gf();
+            g.forEach((t, s) -> rows.add(new TeamRow(t, s[3], s[0], s[1], s[2])));
+            rows.sort((a, b) -> {
+                if (b.pts() != a.pts()) return b.pts() - a.pts();
+                if (b.gd() != a.gd()) return b.gd() - a.gd();
+                if (b.gf() != a.gf()) return b.gf() - a.gf();
                 return Double.compare(elo(b.name()), elo(a.name()));
             });
             groupData.put(gn, rows);
@@ -158,7 +173,8 @@ public class BracketView extends VBox {
     }
 
     private void predictBracket() {
-        leftMatches.clear(); rightMatches.clear();
+        leftMatches.clear();
+        rightMatches.clear();
         List<String[][]> sides = List.of(LEFT_R32, RIGHT_R32);
         List<List<BracketMatch>> out = List.of(leftMatches, rightMatches);
         for (int si = 0; si < 2; si++) {
@@ -222,9 +238,8 @@ public class BracketView extends VBox {
                 groupsGrid.add(createGroupCard(GROUP_ORDER[idx++]), col, row);
             }
 
-        // Add champion prediction after groups
         Label sep = new Label("CAMPEÓN PROYECTADO:  " + predictedChampion);
-        sep.setTextFill(MainWindow.GOLD);
+        sep.setTextFill(AppTheme.GOLD);
         sep.setFont(Font.font("Arial", FontWeight.BOLD, 15));
         sep.setPadding(new Insets(12, 0, 4, PAD));
         sep.setAlignment(Pos.CENTER);
@@ -234,16 +249,12 @@ public class BracketView extends VBox {
         renderBracket();
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    //  BRACKET TREE
-    // ═══════════════════════════════════════════════════════════════
-
     private void renderBracket() {
         bracketContainer.getChildren().clear();
         if (leftMatches.isEmpty()) return;
 
-        Label title = new Label("🏆 FASE ELIMINATORIA — PREDICCIÓN DEL TORNEO");
-        title.setTextFill(MainWindow.GOLD);
+        Label title = new Label("FASE ELIMINATORIA — PREDICCIÓN DEL TORNEO");
+        title.setTextFill(AppTheme.GOLD);
         title.setFont(Font.font("Arial", FontWeight.BOLD, 15));
         title.setPadding(new Insets(14, 0, 2, PAD));
         title.setMaxWidth(Double.MAX_VALUE);
@@ -255,7 +266,6 @@ public class BracketView extends VBox {
         bracketPane.setStyle("-fx-background-color: #0F1217;");
         bracketPane.getChildren().clear();
 
-        // Round labels
         double labelTopY = TOP_Y - 4;
         addRoundLabel("R32", R32_LEFT, labelTopY);
         addRoundLabel("R16", R16_LEFT, labelTopY);
@@ -267,7 +277,6 @@ public class BracketView extends VBox {
         addRoundLabel("R16", R16_RIGHT, labelTopY);
         addRoundLabel("R32", R32_RIGHT, labelTopY);
 
-        // ── Left bracket ──
         for (int i = 0; i < leftMatches.size(); i++) {
             BracketMatch bm = leftMatches.get(i);
             bracketPane.getChildren().add(createBracketCard(bm, R32_LEFT, TOP_Y + i * SLOT));
@@ -284,7 +293,6 @@ public class BracketView extends VBox {
         String sfL = predictWinner(qfL.get(0), qfL.get(1));
         bracketPane.getChildren().add(createTeamLabel(sfL, SF_LEFT, TOP_Y + 3.5 * SLOT - BH / 2));
 
-        // ── Right bracket ──
         for (int i = 0; i < rightMatches.size(); i++) {
             BracketMatch bm = rightMatches.get(i);
             bracketPane.getChildren().add(createBracketCard(bm, R32_RIGHT, TOP_Y + i * SLOT));
@@ -301,11 +309,9 @@ public class BracketView extends VBox {
         String sfR = predictWinner(qfR.get(0), qfR.get(1));
         bracketPane.getChildren().add(createTeamLabel(sfR, SF_RIGHT, TOP_Y + 3.5 * SLOT - BH / 2));
 
-        // ── Champion ──
         String champion = predictWinner(sfL, sfR);
         bracketPane.getChildren().add(createChampionLabel(champion, FINAL_X, TOP_Y + 3.5 * SLOT - 14));
 
-        // ── Connecting lines (drawn first so cards appear on top) ──
         drawConLines();
 
         ScrollPane sp = new ScrollPane(bracketPane);
@@ -317,13 +323,11 @@ public class BracketView extends VBox {
     }
 
     private void drawConLines() {
-        double hw = BW / 2;
-        // Left side: R32 -> R16 -> QF -> SF -> Final
         drawSideLines(R32_LEFT + BW, R16_LEFT, TOP_Y, 8, 4);
         drawSideLines(R16_LEFT + BW, QF_LEFT, TOP_Y, 4, 2);
         drawSideLines(QF_LEFT + BW, SF_LEFT, TOP_Y, 2, 1);
         drawSideLines(SF_LEFT + BW, FINAL_X, TOP_Y, 1, 1);
-        // Right side (mirrored): R32 -> R16 -> QF -> SF -> Final
+
         drawSideLinesR(FINAL_X + BW, SF_RIGHT, TOP_Y, 1, 1);
         drawSideLinesR(SF_RIGHT + BW, QF_RIGHT, TOP_Y, 1, 2);
         drawSideLinesR(QF_RIGHT + BW, R16_RIGHT, TOP_Y, 2, 4);
@@ -332,7 +336,6 @@ public class BracketView extends VBox {
 
     private void drawSideLines(double xStart, double xEnd, double top, int nFrom, int nTo) {
         double stepFrom = SLOT;
-        double stepTo = (nFrom - 1) * stepFrom / Math.max(1, nTo - 1);
         for (int i = 0; i < nFrom; i += 2) {
             double y1 = top + i * stepFrom + BH / 2;
             double y2 = top + (i + 1) * stepFrom + BH / 2;
@@ -347,9 +350,7 @@ public class BracketView extends VBox {
 
     private void drawSideLinesR(double xStart, double xEnd, double top, int nFrom, int nTo) {
         double stepFrom = SLOT * nFrom;
-        double stepTo = (nFrom - 1) * stepFrom / Math.max(1, nTo - 1);
-        int pairs = nFrom;
-        for (int i = 0; i < pairs; i += 2) {
+        for (int i = 0; i < nFrom; i += 2) {
             double y1 = top + (i / 2) * stepFrom + BH / 2;
             double y2 = top + ((i + 1) / 2) * stepFrom + BH / 2;
             double yM = (y1 + y2) / 2;
@@ -363,7 +364,7 @@ public class BracketView extends VBox {
 
     private void addLine(double x1, double y1, double x2, double y2) {
         Line ln = new Line(x1, y1, x2, y2);
-        ln.setStroke(MainWindow.DIV);
+        ln.setStroke(AppTheme.DIV);
         ln.setStrokeWidth(1.5);
         bracketPane.getChildren().add(ln);
     }
@@ -381,33 +382,26 @@ public class BracketView extends VBox {
 
         HBox row1 = new HBox();
         row1.setPadding(new Insets(1, 6, 0, 6));
-        HBox row2 = new HBox();
-        row2.setPadding(new Insets(0, 6, 1, 6));
 
         Label l1 = new Label(t1);
-        l1.setTextFill(t1.equals(winner) ? Color.WHITE : MainWindow.DIM);
+        l1.setTextFill(t1.equals(winner) ? Color.WHITE : AppTheme.DIM);
         l1.setFont(Font.font("Arial", t1.equals(winner) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
         l1.setPrefWidth(BW - 70);
 
-        Label vs1 = new Label("vs");
-        vs1.setTextFill(MainWindow.DIM);
-        vs1.setFont(Font.font("Arial", 7));
-        vs1.setPrefWidth(18);
-        vs1.setAlignment(Pos.CENTER);
-        vs1.setStyle("-fx-text-fill: #555;");
-
         Label l2 = new Label(t2);
-        l2.setTextFill(t2.equals(winner) ? Color.WHITE : MainWindow.DIM);
+        l2.setTextFill(t2.equals(winner) ? Color.WHITE : AppTheme.DIM);
         l2.setFont(Font.font("Arial", t2.equals(winner) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
         l2.setPrefWidth(BW - 70);
 
         row1.getChildren().addAll(l1, new Label(), l2);
         HBox.setHgrow(row1.getChildren().get(1), Priority.ALWAYS);
 
+        HBox row2 = new HBox();
+        row2.setPadding(new Insets(0, 6, 1, 6));
         row2.getChildren().add(new Label());
         String confStr = winner.equals("?") ? "?" : String.format("%.0f%%", bm.confidence * 100);
         Label conf = new Label("→ " + winner + " (" + confStr + ")");
-        conf.setTextFill(MainWindow.ACCENT);
+        conf.setTextFill(AppTheme.ACCENT);
         conf.setFont(Font.font("Arial", FontWeight.BOLD, 9));
         conf.setAlignment(Pos.CENTER_RIGHT);
         HBox.setHgrow(conf, Priority.ALWAYS);
@@ -444,10 +438,10 @@ public class BracketView extends VBox {
         box.setLayoutX(x);
         box.setLayoutY(y);
         box.setPrefSize(BW, 40);
-        box.setStyle("-fx-background-color: #2A2010; -fx-background-radius: 6; -fx-border-color: #FFD700; -fx-border-radius: 6; -fx-border-width: 2; -fx-effect: dropshadow(gaussian, rgba(255,215,0,0.3), 8, 0, 0, 0);");
+        box.setStyle("-fx-background-color: #2A2010; -fx-background-radius: 6; -fx-border-color: #FFD700; -fx-border-radius: 6; -fx-border-width: 2;");
 
-        Label l1 = new Label("🏆 CAMPEÓN");
-        l1.setTextFill(MainWindow.GOLD);
+        Label l1 = new Label("CAMPEON");
+        l1.setTextFill(AppTheme.GOLD);
         l1.setFont(Font.font("Arial", FontWeight.BOLD, 9));
         l1.setAlignment(Pos.CENTER);
         l1.setMaxWidth(Double.MAX_VALUE);
@@ -465,7 +459,7 @@ public class BracketView extends VBox {
 
     private void addRoundLabel(String text, double x, double y) {
         Label lbl = new Label(text);
-        lbl.setTextFill(MainWindow.DIM);
+        lbl.setTextFill(AppTheme.DIM);
         lbl.setFont(Font.font("Arial", FontWeight.BOLD, 10));
         lbl.setLayoutX(x + 4);
         lbl.setLayoutY(y);
@@ -473,14 +467,15 @@ public class BracketView extends VBox {
     }
 
     private Node createGroupCard(String groupName) {
-        Color gc = GCOLOR.getOrDefault(groupName, MainWindow.ACCENT);
+        Color gc = GCOLOR.getOrDefault(groupName, AppTheme.ACCENT);
         List<TeamRow> teams = groupData.get(groupName);
 
         VBox card = new VBox(0);
         card.setPrefSize(CARD_W, CARD_H);
-        card.setStyle("-fx-background-color: #2A2F3B; -fx-background-radius: 8; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 4, 0, 2, 2);");
+        card.setStyle("-fx-background-color: #2A2F3B; -fx-background-radius: 8;");
 
-        String hex = String.format("#%02x%02x%02x", (int)(gc.getRed()*255), (int)(gc.getGreen()*255), (int)(gc.getBlue()*255));
+        String hex = String.format("#%02x%02x%02x",
+            (int) (gc.getRed() * 255), (int) (gc.getGreen() * 255), (int) (gc.getBlue() * 255));
         Label hdr = new Label("GROUP " + groupName.replace("Group ", ""));
         hdr.setMaxWidth(Double.MAX_VALUE);
         hdr.setAlignment(Pos.CENTER);
@@ -491,11 +486,11 @@ public class BracketView extends VBox {
 
         HBox colHdr = new HBox();
         colHdr.setPadding(new Insets(4, 8, 2, 8));
-        String[] ch = {"EQUIPO","PJ","GF","GC","DIF","PTS"};
+        String[] ch = {"EQUIPO", "PJ", "GF", "GC", "DIF", "PTS"};
         int[] cw = {145, 25, 25, 25, 30, 30};
         for (int i = 0; i < ch.length; i++) {
             Label l = new Label(ch[i]);
-            l.setTextFill(MainWindow.DIM);
+            l.setTextFill(AppTheme.DIM);
             l.setFont(Font.font("Arial", FontWeight.BOLD, 8));
             l.setPrefWidth(cw[i]);
             if (i > 0) l.setAlignment(Pos.CENTER_RIGHT);
@@ -510,30 +505,32 @@ public class BracketView extends VBox {
                 HBox rbox = new HBox();
                 rbox.setPadding(new Insets(2, 8, 2, 8));
                 if (i == 0 && t.pts() > 0)
-                    rbox.setStyle("-fx-background-color: rgba(" + (int)(gc.getRed()*255) + "," + (int)(gc.getGreen()*255) + "," + (int)(gc.getBlue()*255) + ", 0.1); -fx-background-radius: 4;");
+                    rbox.setStyle("-fx-background-color: rgba("
+                        + (int) (gc.getRed() * 255) + "," + (int) (gc.getGreen() * 255) + ","
+                        + (int) (gc.getBlue() * 255) + ", 0.1); -fx-background-radius: 4;");
 
                 Label pos = new Label(String.valueOf(i + 1));
-                pos.setTextFill(i == 0 ? gc : MainWindow.DIM);
+                pos.setTextFill(i == 0 ? gc : AppTheme.DIM);
                 pos.setFont(Font.font("Arial", FontWeight.BOLD, 9));
                 pos.setPrefWidth(14);
 
                 Label name = new Label(shorten(t.name(), 17));
-                name.setTextFill(q ? MainWindow.TXT : MainWindow.DIM);
+                name.setTextFill(q ? AppTheme.TXT : AppTheme.DIM);
                 name.setFont(Font.font("Arial", q ? FontWeight.BOLD : FontWeight.NORMAL, 10));
                 name.setPrefWidth(130);
 
                 rbox.getChildren().addAll(pos, name,
-                    txt(String.valueOf(t.played()), 24, MainWindow.DIM),
-                    txt(String.valueOf(t.gf()), 24, MainWindow.DIM),
-                    txt(String.valueOf(t.ga()), 24, MainWindow.DIM),
+                    txt(String.valueOf(t.played()), 24, AppTheme.DIM),
+                    txt(String.valueOf(t.gf()), 24, AppTheme.DIM),
+                    txt(String.valueOf(t.ga()), 24, AppTheme.DIM),
                     txt((t.gd() > 0 ? "+" : "") + t.gd(), 28,
-                        t.gd() > 0 ? Color.rgb(0x27,0xAE,0x60) : t.gd() < 0 ? Color.rgb(0xE7,0x4C,0x3C) : MainWindow.DIM),
-                    txt(String.valueOf(t.pts()), 26, q ? Color.WHITE : MainWindow.DIM));
+                        t.gd() > 0 ? Color.rgb(0x27, 0xAE, 0x60) : t.gd() < 0 ? Color.rgb(0xE7, 0x4C, 0x3C) : AppTheme.DIM),
+                    txt(String.valueOf(t.pts()), 26, q ? Color.WHITE : AppTheme.DIM));
                 rows.getChildren().add(rbox);
             }
         } else {
             Label nd = new Label("Sin datos");
-            nd.setTextFill(MainWindow.DIM);
+            nd.setTextFill(AppTheme.DIM);
             nd.setFont(Font.font("Arial", 10));
             nd.setPadding(new Insets(10, 0, 0, 10));
             rows.getChildren().add(nd);
@@ -545,7 +542,8 @@ public class BracketView extends VBox {
             StringBuilder tip = new StringBuilder(groupName.replace("Group ", "Group ") + "\n");
             int rank = 1;
             for (TeamRow t : teams)
-                tip.append(String.format("\n%d. %s — %d pts (%d PJ, %d:%d, %+d)", rank++, t.name(), t.pts(), t.played(), t.gf(), t.ga(), t.gd()));
+                tip.append(String.format("\n%d. %s — %d pts (%d PJ, %d:%d, %+d)",
+                    rank++, t.name(), t.pts(), t.played(), t.gf(), t.ga(), t.gd()));
             Tooltip.install(card, new Tooltip(tip.toString()));
         }
         return card;
@@ -563,14 +561,18 @@ public class BracketView extends VBox {
     }
 
     private String bestThird(String letters) {
-        String best = null; int bestPts = -1; double bestElo = -1;
+        String best = null;
+        int bestPts = -1;
+        double bestElo = -1;
         for (char c : letters.toCharArray()) {
             List<TeamRow> st = groupData.get("Group " + c);
             if (st == null || st.size() < 3) continue;
             TeamRow t = st.get(2);
             double e = elo(t.name());
             if (best == null || t.pts() > bestPts || (t.pts() == bestPts && e > bestElo)) {
-                best = t.name(); bestPts = t.pts(); bestElo = e;
+                best = t.name();
+                bestPts = t.pts();
+                bestElo = e;
             }
         }
         return best != null ? best : "Mejor 3°";
@@ -578,8 +580,10 @@ public class BracketView extends VBox {
 
     private static Label txt(String s, double w, Color c) {
         Label l = new Label(s);
-        l.setPrefWidth(w); l.setAlignment(Pos.CENTER_RIGHT);
-        l.setTextFill(c);  l.setFont(Font.font("Arial", FontWeight.NORMAL, 10));
+        l.setPrefWidth(w);
+        l.setAlignment(Pos.CENTER_RIGHT);
+        l.setTextFill(c);
+        l.setFont(Font.font("Arial", FontWeight.NORMAL, 10));
         return l;
     }
 
@@ -594,6 +598,6 @@ public class BracketView extends VBox {
         String[] w = t.split("\\s+");
         if (w.length >= 2 && w[0].length() + 1 + w[w.length - 1].length() <= max)
             return w[0] + " " + w[w.length - 1];
-        return t.substring(0, max - 1) + "…";
+        return t.substring(0, max - 1) + "...";
     }
 }

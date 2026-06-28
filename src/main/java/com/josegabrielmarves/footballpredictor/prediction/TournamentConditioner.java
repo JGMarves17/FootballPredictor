@@ -64,6 +64,10 @@ public final class TournamentConditioner {
         INSTANCE.loadFromJson();
     }
 
+    public void clear() {
+        teamData.clear();
+    }
+
     public void addMatch(String home, String away,
                          double hXG, double aXG, int hG, int aG) {
         add(home, away, hXG, aXG, hG, aG);
