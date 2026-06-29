@@ -204,11 +204,21 @@ public class MainWindow extends BorderPane {
         t.setOnSucceeded(e -> {
             loadedMatches = t.getValue();
             loadedMatches.sort(Comparator.comparing(m -> m.date));
-            populateTable(loadedMatches);
-            bracketView.setMatches(loadedMatches, buildRatings());
-            matrixPane.setData(loadedMatches, buildRatings());
+
+            // Filtrar solo partidos NO jugados (sin marcador)
+            List<Match> upcoming = loadedMatches.stream()
+                    .filter(m -> m.score == null)
+                    .toList();
+
+            populateTable(upcoming);
+            bracketView.setMatches(upcoming, buildRatings());
+            matrixPane.setData(upcoming, buildRatings());
             btnPredict.setDisable(false);
-            statusLabel.setText(loadedMatches.size() + " partidos cargados");
+
+            int total = loadedMatches.size();
+            int pendientes = upcoming.size();
+            int jugados = total - pendientes;
+            statusLabel.setText(pendientes + " partidos pendientes de " + total + " totales (" + jugados + " ya jugados)");
         });
         t.setOnFailed(e -> statusLabel.setText("Error: " + t.getException().getMessage()));
         new Thread(t).start();
@@ -298,16 +308,17 @@ public class MainWindow extends BorderPane {
         OutputStream out = new OutputStream() {
             @Override
             public void write(int b) {
-                Platform.runLater(() -> consoleArea.appendText(String.valueOf((char) b)));
+                // ignoramos bytes sueltos; PrintStream usualmente escribe batches
             }
 
             @Override
             public void write(byte[] b, int off, int len) {
-                Platform.runLater(() -> consoleArea.appendText(new String(b, off, len)));
+                String text = new String(b, off, len, java.nio.charset.StandardCharsets.UTF_8);
+                Platform.runLater(() -> consoleArea.appendText(text));
             }
         };
-        System.setOut(new PrintStream(out, true));
-        System.setErr(new PrintStream(out, true));
+        System.setOut(new PrintStream(out, true, java.nio.charset.StandardCharsets.UTF_8));
+        System.setErr(new PrintStream(out, true, java.nio.charset.StandardCharsets.UTF_8));
     }
 
     // ── Helpers ──
