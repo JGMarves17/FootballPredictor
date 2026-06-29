@@ -4,3 +4,7 @@ target/
 data/predictions/
 __pycache__/
 *.pyc
+
+# Configuración local con credenciales (WA_PHONE, WA_APIKEY)
+# Copia config.properties.example → config.properties y rellena tus datos
+config.properties

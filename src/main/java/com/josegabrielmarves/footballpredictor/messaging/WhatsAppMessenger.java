@@ -23,11 +23,13 @@ import java.util.List;
  * Modos de envío:
  *   1. COPY    — copia al portapapeles (lo pegas manual en WhatsApp)
  *   2. BROWSER — abre WhatsApp Web con el texto pre-escrito
- *   3. BOTH    — ambos (default)
+ *   3. BOTH    — ambos
+ *   4. API     — envía vía CallMeBot (gratis, 100 msg/día)
+ *   5. AUTO    — intenta API, si falla o no está configurado → COPY (default)
  */
 public final class WhatsAppMessenger {
 
-    public enum Mode { COPY, BROWSER, BOTH }
+    public enum Mode { COPY, BROWSER, BOTH, API, AUTO }
 
     private static final String GROUP_NAME = "Quiniela Mundial 2026";
     private static final String MI_NOMBRE  = "Gabriel Marves";
@@ -69,7 +71,7 @@ public final class WhatsAppMessenger {
         }
 
         sb.append("─".repeat(25)).append("\n");
-        sb.append("⚡ Generado por FootballPredictor v2 — Triple Blend + xG\n");
+        sb.append("⚡ Generado por FootballPredictor — Triple Blend + xG\n");
         sb.append("📱 Enviado desde ").append(System.getProperty("os.name")).append("\n");
 
         return sb.toString();
@@ -108,7 +110,7 @@ public final class WhatsAppMessenger {
         }
 
         sb.append("─".repeat(25)).append("\n");
-        sb.append("⚡ Optimizado por FootballPredictor v2\n");
+        sb.append("⚡ Optimizado por FootballPredictor\n");
         sb.append("📱 ").append(java.time.LocalDateTime.now()).append("\n");
 
         return sb.toString();
@@ -125,6 +127,8 @@ public final class WhatsAppMessenger {
                 copyToClipboard(message);
                 openWhatsApp(message);
             }
+            case API -> sendViaApi(message);
+            case AUTO -> sendWithBot(message);
         }
     }
 
@@ -133,6 +137,68 @@ public final class WhatsAppMessenger {
      */
     public static void send(String message) {
         send(message, Mode.COPY);
+    }
+
+    /**
+     * Envía intentando primero Telegram, luego CallMeBot, y si nada funciona
+     * copia al portapapeles. Nunca pierde el mensaje.
+     * <p>
+     * Orden de intentos:
+     * <ol>
+     *   <li>{@link TelegramBotSender} (recomendado — gratis ilimitado)</li>
+     *   <li>{@link CallMeBotSender} (WhatsApp vía API, 100 msg/día)</li>
+     *   <li>Portapapeles (fallback universal)</li>
+     * </ol>
+     */
+    public static void sendWithBot(String message) {
+        // 1. Telegram (mejor opción)
+        WhatsAppBot tg = new TelegramBotSender();
+        if (tg.isAvailable()) {
+            try {
+                tg.send(message);
+                System.out.println("📱 Enviado por Telegram");
+                return;
+            } catch (Exception e) {
+                System.err.println("[Telegram] Falló: " + e.getMessage() + " — probando siguiente...");
+            }
+        }
+
+        // 2. CallMeBot (WhatsApp)
+        WhatsAppBot wa = new CallMeBotSender();
+        if (wa.isAvailable()) {
+            try {
+                wa.send(message);
+                System.out.println("📱 Enviado por WhatsApp (CallMeBot)");
+                return;
+            } catch (Exception e) {
+                System.err.println("[CallMeBot] Falló: " + e.getMessage() + " — probando siguiente...");
+            }
+        }
+
+        // 3. Fallback: portapapeles
+        if (!tg.isAvailable() && !wa.isAvailable()) {
+            System.out.println("\n📋 Ningún bot configurado.");
+            System.out.println("   Para activar Telegram: define TELEGRAM_TOKEN y TELEGRAM_CHAT_ID");
+            System.out.println("   Para activar WhatsApp: define WA_PHONE y WA_APIKEY");
+            System.out.println("→ Copiando al portapapeles");
+        } else {
+            System.out.println("→ Copiando al portapapeles como fallback");
+        }
+        copyToClipboard(message);
+    }
+
+    /** Intenta enviar vía API; si no hay config, lanza IllegalStateException. */
+    private static void sendViaApi(String message) {
+        WhatsAppBot bot = new CallMeBotSender();
+        if (!bot.isAvailable()) {
+            throw new IllegalStateException(
+                    "Modo API sin configurar. Define WA_PHONE y WA_APIKEY");
+        }
+        try {
+            bot.send(message);
+        } catch (Exception e) {
+            throw new RuntimeException("Error al enviar por API", e);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

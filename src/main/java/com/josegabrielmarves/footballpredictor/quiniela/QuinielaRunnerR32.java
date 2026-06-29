@@ -1,5 +1,6 @@
 package com.josegabrielmarves.footballpredictor.quiniela;
 
+import com.josegabrielmarves.footballpredictor.api.BracketApiClient;
 import com.josegabrielmarves.footballpredictor.api.datasource.OpenFootballProvider;
 import com.josegabrielmarves.footballpredictor.messaging.WhatsAppMessenger;
 import com.josegabrielmarves.footballpredictor.model.Match;
@@ -18,13 +19,11 @@ import java.util.*;
  * 🏆 RUNNER DEDICADO PARA ELIMINATORIAS — DIECISEISAVOS DE FINAL (R32)
  * <p>
  * ════════════════════════════════════════════════════════════════════
- * CÓMO USAR (cuando se anuncien los cruces):
+ * 🔄 AUTOMÁTICO — Los cruces R32 se obtienen EN VIVO desde:
+ *    openfootball/worldcup.json (sin API key, actualizado por GitHub Actions)
  * <p>
- * 1. Abre este archivo
- * 2. Ve a la sección "✏️ EDITAR AQUÍ: PARTIDOS DE LA JORNADA"
- * 3. Reemplaza los placeholders con los cruces R32 reales
- * 4. Guarda y ejecuta {@link #main(String[])}
- * 5. El mensaje se copia al portapapeles — pégalo en WhatsApp
+ * 📡 El sistema resuelve los cruces reales automáticamente.
+ *    No necesitas editar nada. Solo ejecuta y envía.
  * ════════════════════════════════════════════════════════════════════
  * <p>
  * Puntos en juego:
@@ -39,36 +38,26 @@ public final class QuinielaRunnerR32 {
     private QuinielaRunnerR32() {}
 
     // ──────────────────────────────────────────────────────────────────────────
-    // ✏️  EDITAR AQUÍ: PARTIDOS DE LA JORNADA
+    // 🌐  PARTIDOS AUTOMÁTICOS — se obtienen de openfootball/worldcup.json
     // ──────────────────────────────────────────────────────────────────────────
     //
-    //  INSTRUCCIONES:
-    //   1. Cuando se anuncien los 16 cruces de R32,
-    //      reemplaza los strings de abajo con el formato:
-    //      "EquipoLocal vs EquipoVisitante"
+    //  Los 16 partidos de R32 se cargan DESDE LA API en tiempo real.
+    //  No necesitas editar nada aquí a menos que quieras OVERRIDE manual.
     //
-    //   2. Usa los nombres EXACTOS en inglés
-    //      (ej: "Netherlands" no "Holanda", "South Korea" no "Corea del Sur")
-    //
-    //   3. Los nombres deben coincidir con CalibratedEloRatings
-    //
-    //  ⚠️  MANTENER EL ORDEN CRONOLÓGICO si es posible
-    //      (primer partido de R32 primero)
+    //  Para override manual, asigna MANUAL_MATCHES y pon AUTO_FETCH=false:
+    //     private static final boolean AUTO_FETCH = false;
+    //     private static final List<String> MANUAL_MATCHES = List.of(
+    //         "Spain vs Morocco",
+    //         "Germany vs Brazil"
+    //     );
     //
     // ──────────────────────────────────────────────────────────────────────────
-    private static final List<String> R32_MATCHES = List.of(
-            // ═══ PARTIDOS R32 — reemplazar cuando se anuncien ═══
-            // "Spain vs Morocco"    // ← ejemplo real
-            // "Germany vs Brazil"   // ← ejemplo real
-            //
-            // ═══ PARTIDOS JORNADA 3 (placeholder temporal) ═══
-            "Czech Republic vs Mexico",
-            "South Africa vs South Korea",
-            "Bosnia & Herzegovina vs Switzerland",
-            "Qatar vs Canada"
-    );
+    private static final boolean AUTO_FETCH = true;
+
+    /** Override manual — solo si AUTO_FETCH=false */
+    private static final List<String> MANUAL_MATCHES = List.of();
     //
-    // ═══ FIN de la sección editable ═══
+    // ═══ FIN de la sección de configuración ═══
     // ──────────────────────────────────────────────────────────────────────────
 
     /** Número de jornada (R32 = jornada 4 del torneo). */
@@ -92,7 +81,7 @@ public final class QuinielaRunnerR32 {
     public static void run() throws Exception {
         System.out.printf("""
             ╔════════════════════════════════════════════════════════╗
-            ║  🏆  FOOTBALL PREDICTOR v2 — %s  ║
+            ║  🏆  FOOTBALL PREDICTOR — %s        ║
             ║  📌  Puntos: %d resultado · %d exacto · −10L fallo   ║
             ║  🎯  Estrategia: ALL-IN (maximiza P de 1er lugar)     ║
             ╚════════════════════════════════════════════════════════╝
@@ -107,8 +96,70 @@ public final class QuinielaRunnerR32 {
             ratings.putIfAbsent(m.awayTeam, CalibratedEloRatings.getRating(m.awayTeam));
         }
 
-        // ── 2. Historial WC 2026 para GLM ─────────────────────────────────────
-        System.out.println("[2/7] Inicializando historial WC 2026...");
+        // ── 2. CARGAR CRUCES R32 DESDE LA API ────────────────────────────────
+        System.out.println("[2/7] Obteniendo cruces R32 desde openfootball API...");
+        List<MatchdayEngine.MatchInput> matchday;
+        try {
+            BracketApiClient bracket = new BracketApiClient();
+            bracket.refresh();
+            List<BracketApiClient.BracketMatch> r32Matches = bracket.getRoundOf32();
+
+            if (r32Matches.isEmpty()) {
+                System.err.println("  ⚠️  No se encontraron partidos R32 en la API.");
+                System.err.println("  Usando override manual si está configurado...");
+                matchday = parseMatches(MANUAL_MATCHES);
+            } else {
+                // Separar jugados vs próximos
+                List<BracketApiClient.BracketMatch> upcoming = r32Matches.stream()
+                        .filter(bm -> !bm.isPlayed())
+                        .toList();
+                List<BracketApiClient.BracketMatch> played = r32Matches.stream()
+                        .filter(BracketApiClient.BracketMatch::isPlayed)
+                        .toList();
+
+                if (!played.isEmpty()) {
+                    System.out.println("\n  📋 RESULTADOS RECIENTES:");
+                    for (BracketApiClient.BracketMatch bm : played) {
+                        System.out.printf("    ✅ #%d: %s %d-%d %s [%s]%n",
+                                bm.matchNumber(), bm.team1(), bm.homeGoals(),
+                                bm.awayGoals(), bm.team2(), bm.date());
+                    }
+                }
+
+                System.out.printf("\n  → %d partidos de R32 (%d jugados, %d próximos)%n",
+                        r32Matches.size(), played.size(), upcoming.size());
+                for (BracketApiClient.BracketMatch bm : upcoming) {
+                    System.out.printf("    🏟️  #%d: %s vs %s [%s]%n",
+                            bm.matchNumber(), bm.team1(), bm.team2(), bm.date());
+                }
+                // Convertir BracketMatch → MatchInput para el motor
+                matchday = new ArrayList<>();
+                for (BracketApiClient.BracketMatch bm : upcoming) {
+                    if (bm.isPlaceholder()) continue;
+                    matchday.add(new MatchdayEngine.MatchInput(
+                            bm.team1(), bm.team2(), Stage.DIECISEISAVOS));
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("  ⚠️  Error al consultar API: " + e.getMessage());
+            System.err.println("  Usando override manual...");
+            matchday = parseMatches(MANUAL_MATCHES);
+        }
+
+        if (matchday.isEmpty()) {
+            System.err.printf("""
+                ╔══════════════════════════════════════════════════╗
+                ║  ❌  ERROR: No hay partidos para predecir        ║
+                ║                                                 ║
+                ║  La API no devolvió datos y no hay override.     ║
+                ║  Verifica tu conexión a Internet o configura     ║
+                ║  MANUAL_MATCHES con AUTO_FETCH=false.            ║
+                ╚══════════════════════════════════════════════════╝%n""");
+            return;
+        }
+
+        // ── 3. Historial WC 2026 para GLM (estático para calibración) ─────────────────────────────────────
+        System.out.println("[3/7] Inicializando historial WC 2026...");
         List<TournamentGLM.MatchData> wcHistory = new ArrayList<>(List.of(
                 // Jornada 1 (24 partidos)
                 new TournamentGLM.MatchData("Mexico",       "South Africa",         2,0,true),
@@ -137,14 +188,14 @@ public final class QuinielaRunnerR32 {
                 new TournamentGLM.MatchData("Ghana",        "Panama",               1,0,false)
         ));
 
-        // ── 3. LiveMatchUpdater ────────────────────────────────────────────────
-        System.out.println("[3/7] Inicializando LiveMatchUpdater...");
+        // ── 4. LiveMatchUpdater ────────────────────────────────────────────────
+        System.out.println("[4/7] Inicializando LiveMatchUpdater...");
         LiveMatchUpdater updater = new LiveMatchUpdater(ratings, wcHistory);
         System.out.printf("  → %d partidos en historial, GLM calibrado%n",
                 updater.matchesRecorded());
 
-        // ── 4. CLASIFICACIÓN ACTUAL (24-jun, jornada 3 parcial) ───────────────
-        System.out.println("[4/7] Cargando clasificación actual...");
+        // ── 5. CLASIFICACIÓN ACTUAL (27-jun, grupos completos) ────────────────
+        System.out.println("[5/7] Cargando clasificación actual...");
         Map<String, Integer> standings = new LinkedHashMap<>();
         standings.put(StandingsSimulator.US,  19);   // Gabriel Marves (P17)
         standings.put("Rodrigo Lopez",        38);
@@ -164,8 +215,8 @@ public final class QuinielaRunnerR32 {
         standings.put("Manuel Molina",        24);
         standings.put("Jorge Brand",          22);
 
-        // ── 5. PERFILES DE RIVALES ─────────────────────────────────────────────
-        System.out.println("[5/7] Cargando perfiles de rivales...");
+        // ── 6. PERFILES DE RIVALES ─────────────────────────────────────────────
+        System.out.println("[6/7] Cargando perfiles de rivales...");
         List<RivalProfile> rivals = List.of(
                 new RivalProfile("Rodrigo Lopez",     RivalProfile.Type.FAVORITE),
                 new RivalProfile("Daniel Ortiz",      RivalProfile.Type.RANDOM),
@@ -185,22 +236,7 @@ public final class QuinielaRunnerR32 {
                 new RivalProfile("Jorge Brand",       RivalProfile.Type.RANDOM)
         );
 
-        // ── 6. CONVERTIR STRINGS DE PARTIDOS A MatchInput ──────────────────────
-        List<MatchdayEngine.MatchInput> matchday = parseMatches(R32_MATCHES);
-
-        if (matchday.isEmpty()) {
-            System.err.printf("""
-                ╔══════════════════════════════════════════════════╗
-                ║  ❌  ERROR: No hay partidos configurados          ║
-                ║                                                 ║
-                ║  Edita la lista R32_MATCHES en este archivo      ║
-                ║  con los 16 cruces de Dieciseisavos de Final.    ║
-                ║                                                 ║
-                ║  Formato: "EquipoLocal vs EquipoVisitante"       ║
-                ║  Ejemplo: "Spain vs Morocco"                     ║
-                ╚══════════════════════════════════════════════════╝%n""");
-            return;
-        }
+        // matchday ya cargado desde API en paso [2/7]
 
         System.out.printf("[6/7] Procesando %d partidos de %s...%n",
                 matchday.size(), STAGE_NAME);
@@ -209,6 +245,7 @@ public final class QuinielaRunnerR32 {
         MatchdayEngine.preMatchday(JORNADA, matchday, ratings, LocalDate.now());
 
         // ── 8. P(podio) con MetaSimulator ──────────────────────────────────────
+        System.out.println("\n[7/7] Calculando P(podio) con MetaSimulator...");
         System.out.println("\n[📊] Calculando P(podio) con MetaSimulator...");
         List<Match> remaining = allMatches.stream().filter(m -> m.score == null).toList();
 
@@ -267,11 +304,12 @@ public final class QuinielaRunnerR32 {
         // ── 11. WHATSAPP ──────────────────────────────────────────────────────
         System.out.println("\n[📱] Generando mensaje para WhatsApp...");
         String waMsg = buildWhatsAppMessage(JORNADA, matchday, opt, strategyMatches);
-        WhatsAppMessenger.send(waMsg);
+        // AUTO: intenta CallMeBot API, si falla → portapapeles
+        WhatsAppMessenger.sendWithBot(waMsg);
 
         System.out.println();
-        System.out.println("✅ LISTO. El mensaje está en tu portapapeles.");
-        System.out.println("👉 Pégalo en el grupo 'Quiniela Mundial 2026' de WhatsApp.");
+        System.out.println("✅ LISTO. Mensaje generado y enviado.");
+        System.out.println("👉 Si el envío automático falló, pégalo en el grupo.");
         System.out.println("👉 NO olvides enviarlo ANTES del primer partido de R32.");
     }
 
@@ -359,7 +397,7 @@ public final class QuinielaRunnerR32 {
         }
 
         sb.append("─".repeat(25)).append("\n");
-        sb.append("⚡ FootballPredictor v2 — ALL-IN · Triple Blend + xG\n");
+        sb.append("⚡ FootballPredictor — ALL-IN · Triple Blend + xG\n");
         sb.append("🎯 Estrategia ALL-IN (máx P(1°))\n");
         sb.append("📱 ").append(java.time.LocalDateTime.now()).append("\n");
 

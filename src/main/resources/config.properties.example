@@ -1,0 +1,36 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# 🏆 TELEGRAM (RECOMENDADO — gratis ilimitado)
+# ──────────────────────────────────────────────────────────────────────────────
+# Cómo obtener credenciales:
+#   1. En Telegram, buscá @BotFather y creá un bot con /newbot
+#   2. Guardá el token que te da
+#   3. Enviále /start a tu bot desde Telegram
+#   4. Obtené tu chat_id abriendo en el navegador:
+#      https://api.telegram.org/bot<TU_TOKEN>/getUpdates
+#      Buscá "chat":{"id":123456789} — ese número es tu chat_id
+#
+# Alternativa: usa variables de entorno (TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Token de tu bot (de @BotFather)
+telegram.token=
+
+# Tu chat_id numérico
+telegram.chatId=
+
+# ──────────────────────────────────────────────────────────────────────────────
+# WhatsApp (CallMeBot) — Alternativa gratuita, 100 msg/día
+# ──────────────────────────────────────────────────────────────────────────────
+#   1. Ve a https://www.callmebot.com
+#   2. Registra tu número (formato internacional, sin +)
+#   3. Recibirás un código de confirmación por WhatsApp
+#   4. Ingresa el código en la web y obtén tu API key
+#
+# Alternativa: usa variables de entorno (WA_PHONE, WA_APIKEY)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Teléfono en formato internacional (ej: 50433803850 para Honduras)
+whatsapp.phone=
+
+# API key de CallMeBot
+whatsapp.apikey=

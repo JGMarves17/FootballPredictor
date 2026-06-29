@@ -6,6 +6,7 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.CalibratedEloRatin
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
+import com.josegabrielmarves.footballpredictor.prediction.EnsemblePredictor;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer;
 
@@ -119,6 +120,52 @@ public final class MatchdayEngine {
 
         // Guardar JSON
         savePredictions(jornada, today, jsonMatches);
+
+        // ── Comparación con mercado de apuestas ───────────────────────────────
+        System.out.println("\n📈 Solicitando odds de mercado (The Odds API)...");
+        try {
+            var ep = new EnsemblePredictor();
+            System.out.println("═".repeat(80));
+            System.out.printf("  %-22s %-22s  %-16s  %-16s%n",
+                    "Local", "Visitante", "Modelo", "Ensemble (α=0.15)");
+            System.out.println("─".repeat(80));
+            for (MatchInput m : matches) {
+                double bonus = hostBonus(m.team1());
+                EloRating home = ratings.getOrDefault(m.team1(),
+                        CalibratedEloRatings.getRating(m.team1()));
+                EloRating away = ratings.getOrDefault(m.team2(),
+                        CalibratedEloRatings.getRating(m.team2()));
+
+                var modelProbs = PoissonPredictor.matchProbabilitiesTournament(
+                        m.team1(), home, m.team2(), away, bonus, m.stage());
+                var mktProbs = PoissonPredictor.matchProbabilitiesTournamentWithMarket(
+                        m.team1(), home, m.team2(), away, bonus, m.stage(), ep);
+
+                String modelStr = String.format("%s (%.0f%%)",
+                        resultLabel(modelProbs.homeWin(), modelProbs.draw(), modelProbs.awayWin()),
+                        max3(modelProbs.homeWin(), modelProbs.draw(), modelProbs.awayWin()) * 100);
+                String mktStr = String.format("%s (%.0f%%)",
+                        resultLabel(mktProbs.homeWin(), mktProbs.draw(), mktProbs.awayWin()),
+                        max3(mktProbs.homeWin(), mktProbs.draw(), mktProbs.awayWin()) * 100);
+
+                System.out.printf("  %-22s %-22s  %-16s  %-16s%n",
+                        m.team1(), m.team2(), modelStr, mktStr);
+            }
+            System.out.println("═".repeat(80));
+        } catch (Exception e) {
+            System.out.println("  (sin odds disponibles: " + e.getMessage() + ")");
+        }
+    }
+
+    private static String resultLabel(double pH, double pD, double pA) {
+        double best = max3(pH, pD, pA);
+        if (best == pH) return "1";
+        if (best == pD) return "X";
+        return "2";
+    }
+
+    private static double max3(double a, double b, double c) {
+        return Math.max(a, Math.max(b, c));
     }
 
     // ── POST-JORNADA ──────────────────────────────────────────────────────────

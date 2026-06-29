@@ -1,6 +1,8 @@
 package com.josegabrielmarves.footballpredictor.prediction.poisson;
 
 import com.josegabrielmarves.footballpredictor.model.Score;
+import com.josegabrielmarves.footballpredictor.prediction.AltitudeFactor;
+import com.josegabrielmarves.footballpredictor.prediction.EnsemblePredictor;
 import com.josegabrielmarves.footballpredictor.prediction.FIFAFormCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.TournamentConditioner;
 import com.josegabrielmarves.footballpredictor.prediction.ProbabilityCalibrator;
@@ -121,6 +123,9 @@ public final class PoissonPredictor {
         TournamentConditioner cond = TournamentConditioner.getInstance();
         double[] adjusted = cond.adjustLambdas(homeTeam, lambdaH, awayTeam, lambdaA);
 
+        // 6. Ajuste por altitud de la sede (México ~1,800m)
+        adjusted = AltitudeFactor.adjustLambdas(adjusted[0], adjusted[1], homeTeam, awayTeam);
+
         return adjusted;
     }
 
@@ -194,6 +199,97 @@ public final class PoissonPredictor {
                                                    double homeBonus, Stage stage) {
         double[] lambdas = expectedGoalsBlended(homeTeam, home, awayTeam, away, homeBonus, stage);
         return buildMatrix(lambdas[0], lambdas[1], DC_RHO_TOURNAMENT);
+    }
+
+    /**
+     * Matriz triple-blend + mercado de apuestas.
+     *
+     * Combina el modelo propio con las probabilidades del mercado (The Odds API).
+     * Usa optimización para ajustar los λ (goles esperados) de forma que la
+     * matriz DC resultante coincida con las probabilidades blend.
+     *
+     * Cuando no hay odds disponibles, devuelve la matriz estándar de torneo.
+     */
+    public static double[][] scoreMatrixTournamentWithMarket(String homeTeam, EloRating home,
+                                                              String awayTeam,  EloRating away,
+                                                              double homeBonus, Stage stage,
+                                                              EnsemblePredictor ep) {
+        // 1. Obtener λ base del modelo (ya incluye altitud)
+        double[] lambdas = expectedGoalsBlended(homeTeam, home, awayTeam, away, homeBonus, stage);
+
+        // 2. Obtener probabilidades blend del EnsemblePredictor
+        double[] blended = ep.probabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, stage);
+
+        // 3. Verificar si realmente hay datos de mercado
+        boolean hasMarket = false;
+        try {
+            MatchProbabilities modelProbs = matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, stage);
+            hasMarket = Math.abs(blended[0] - modelProbs.homeWin()) > 0.002
+                    || Math.abs(blended[2] - modelProbs.awayWin()) > 0.002;
+        } catch (Exception e) {
+            hasMarket = false;
+        }
+
+        if (!hasMarket) {
+            return buildMatrix(lambdas[0], lambdas[1], DC_RHO_TOURNAMENT);
+        }
+
+        // 4. Buscar λ ajustados que produzcan las probabilidades blend
+        double[] adjusted = findLambdasToMatchProbs(
+                blended[0], blended[1], blended[2],
+                lambdas[0], lambdas[1], DC_RHO_TOURNAMENT);
+
+        System.out.printf("  📈 [Mercado] %s vs %s — λ: %.3f→%.3f , %.3f→%.3f%n",
+                homeTeam, awayTeam,
+                lambdas[0], adjusted[0], lambdas[1], adjusted[1]);
+
+        return buildMatrix(adjusted[0], adjusted[1], DC_RHO_TOURNAMENT);
+    }
+
+    /**
+     * Probabilidades 1X2 con blend de mercado.
+     */
+    public static MatchProbabilities matchProbabilitiesTournamentWithMarket(
+            String homeTeam, EloRating home,
+            String awayTeam, EloRating away,
+            double homeBonus, Stage stage, EnsemblePredictor ep) {
+        return aggregateProbs(scoreMatrixTournamentWithMarket(
+                homeTeam, home, awayTeam, away, homeBonus, stage, ep));
+    }
+
+    /**
+     * Encuentra λ_home, λ_away que minimizan la distancia a las
+     * probabilidades objetivo [p1, pX, p2] usando búsqueda en grid.
+     *
+     * Busca escalares s₁,s₂ ∈ [0.7, 1.3] alrededor de los λ base.
+     * Esto ajusta la forma de la matriz DC para que sus marginales
+     * 1X2 se alineen con las del mercado.
+     */
+    private static double[] findLambdasToMatchProbs(
+            double targetP1, double targetPX, double targetP2,
+            double lambdaH, double lambdaA, double rho) {
+        double bestDist = Double.MAX_VALUE;
+        double bestLH = lambdaH, bestLA = lambdaA;
+
+        // Grid: ±30% alrededor de λ base, paso 2%
+        for (double s1 = 0.70; s1 <= 1.30; s1 += 0.02) {
+            for (double s2 = 0.70; s2 <= 1.30; s2 += 0.02) {
+                double tH = clamp(lambdaH * s1);
+                double tA = clamp(lambdaA * s2);
+                var probs = aggregateProbs(buildMatrix(tH, tA, rho));
+
+                double dist = Math.abs(probs.homeWin() - targetP1)
+                            + Math.abs(probs.draw()   - targetPX)
+                            + Math.abs(probs.awayWin() - targetP2);
+
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestLH = tH;
+                    bestLA = tA;
+                }
+            }
+        }
+        return new double[]{bestLH, bestLA};
     }
 
     private static double[][] buildMatrix(double lH, double lA, double rho) {

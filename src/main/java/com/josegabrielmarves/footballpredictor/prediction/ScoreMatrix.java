@@ -48,11 +48,44 @@ public record ScoreMatrix(
     }
 
     public static ScoreMatrix compute(String homeTeam, EloRating home,
-                                      String awayTeam,  EloRating away,
-                                      double homeBonus, long seed, int n, Stage stage) {
+                                       String awayTeam,  EloRating away,
+                                       double homeBonus, long seed, int n, Stage stage) {
         double[][] dcMatrix = PoissonPredictor.scoreMatrixTournament(
                 homeTeam, home, awayTeam, away, homeBonus, stage);
+        return runMc(dcMatrix, homeTeam, awayTeam, seed, n);
+    }
 
+    // ── Factoría con mercado ───────────────────────────────────────────────────
+
+    /**
+     * Genera la ScoreMatrix con ajuste de mercado de apuestas.
+     *
+     * Combina el modelo propio con las odds de The Odds API usando
+     * EnsemblePredictor. Cuando no hay odds disponibles, se comporta
+     * igual que compute() normal.
+     */
+    public static ScoreMatrix computeWithMarket(String homeTeam, EloRating home,
+                                                 String awayTeam,  EloRating away,
+                                                 double homeBonus, long seed, int n,
+                                                 Stage stage, EnsemblePredictor ep) {
+        double[][] dcMatrix = PoissonPredictor.scoreMatrixTournamentWithMarket(
+                homeTeam, home, awayTeam, away, homeBonus, stage, ep);
+
+        return runMc(dcMatrix, homeTeam, awayTeam, seed, n);
+    }
+
+    /** Versión con DEFAULT_SIMS. */
+    public static ScoreMatrix computeWithMarket(String homeTeam, EloRating home,
+                                                 String awayTeam,  EloRating away,
+                                                 double homeBonus, long seed,
+                                                 Stage stage, EnsemblePredictor ep) {
+        return computeWithMarket(homeTeam, home, awayTeam, away,
+                homeBonus, seed, DEFAULT_SIMS, stage, ep);
+    }
+
+    /** MC interno compartido entre compute y computeWithMarket. */
+    private static ScoreMatrix runMc(double[][] dcMatrix, String homeTeam,
+                                      String awayTeam, long seed, int n) {
         Random rng = new Random(seed);
         int size = dcMatrix.length;
         int[][] counts = new int[size][size];
@@ -66,13 +99,11 @@ public record ScoreMatrix(
             if (h > a) win++; else if (h == a) draw++; else loss++;
         }
 
-        // Convertir conteos a probabilidades
         double[][] prob = new double[size][size];
         for (int h = 0; h < size; h++)
             for (int a = 0; a < size; a++)
                 prob[h][a] = (double) counts[h][a] / n;
 
-        // Top 5 por frecuencia
         List<ScoredPrediction> top5 = new ArrayList<>();
         for (int h = 0; h < size; h++)
             for (int a = 0; a < size; a++)

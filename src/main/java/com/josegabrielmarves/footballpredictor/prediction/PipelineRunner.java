@@ -118,7 +118,7 @@ public final class PipelineRunner {
                         com.josegabrielmarves.footballpredictor.prediction.elo.EloRating.initial(m.team1()))).toList(),
                 matchday.stream().map(m -> ratings.getOrDefault(m.team2(),
                         com.josegabrielmarves.footballpredictor.prediction.elo.EloRating.initial(m.team2()))).toList());
-        WhatsAppMessenger.send(msg, WhatsAppMessenger.Mode.COPY);
+        WhatsAppMessenger.sendWithBot(msg);
 
         // Resumen
         System.out.println("\n" + "=".repeat(60));

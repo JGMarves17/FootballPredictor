@@ -1,6 +1,7 @@
 package com.josegabrielmarves.footballpredictor.quiniela;
 
 import com.josegabrielmarves.footballpredictor.model.Score;
+import com.josegabrielmarves.footballpredictor.prediction.EnsemblePredictor;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage;
@@ -134,6 +135,53 @@ public final class MatchEV {
                 : probs.awayWin() >= probs.draw() ? '2' : 'X';
 
         // Seguro: marcador más probable DENTRO del resultado dominante
+        int sh = 0, sa = 0; double pSeguro = -1;
+        for (int h = 0; h < m.length; h++)
+            for (int a = 0; a < m[h].length; a++) {
+                char r = h > a ? '1' : h < a ? '2' : 'X';
+                if (r == winner && m[h][a] > pSeguro) { pSeguro = m[h][a]; sh = h; sa = a; }
+            }
+
+        double best = Math.max(probs.homeWin(), Math.max(probs.draw(), probs.awayWin()));
+        Risk risk = best >= 0.65 ? Risk.FIJO : best >= 0.55 ? Risk.FUERTE
+                                               : best >= 0.45 ? Risk.DOBLE : Risk.TRIPLE;
+
+        String label = winner == '1' ? homeTeam : winner == '2' ? awayTeam : "Empate";
+        label = String.format("%s (%.0f%%)", label, best * 100);
+
+        return new DualPick(new Score(sh, sa), pSeguro,
+                new Score(eh, ea), pExacto, risk, label);
+    }
+
+    /**
+     * [v2 + Mercado] Recomendación dual usando probabilidades ajustadas
+     * por mercado de apuestas (The Odds API).
+     *
+     * Cuando hay odds disponibles, los picks reflejan información que
+     * el modelo puro no captura (lesiones, alineaciones, clima).
+     * Cuando no hay odds, se comporta igual que dualPick().
+     */
+    public static DualPick dualPickWithMarket(String homeTeam, EloRating home,
+                                               String awayTeam, EloRating away,
+                                               double homeBonus,
+                                               EnsemblePredictor ep) {
+        double[][] m = PoissonPredictor.scoreMatrixTournamentWithMarket(
+                homeTeam, home, awayTeam, away, homeBonus, null, ep);
+        PoissonPredictor.MatchProbabilities probs =
+                PoissonPredictor.matchProbabilitiesTournamentWithMarket(
+                        homeTeam, home, awayTeam, away, homeBonus, null, ep);
+
+        // Exacto: marcador con mayor probabilidad absoluta
+        int eh = 0, ea = 0; double pExacto = -1;
+        for (int h = 0; h < m.length; h++)
+            for (int a = 0; a < m[h].length; a++)
+                if (m[h][a] > pExacto) { pExacto = m[h][a]; eh = h; ea = a; }
+
+        // Resultado más probable
+        char winner = probs.homeWin() >= probs.draw() && probs.homeWin() >= probs.awayWin() ? '1'
+                : probs.awayWin() >= probs.draw() ? '2' : 'X';
+
+        // Seguro: marcador más probable dentro del resultado dominante
         int sh = 0, sa = 0; double pSeguro = -1;
         for (int h = 0; h < m.length; h++)
             for (int a = 0; a < m[h].length; a++) {

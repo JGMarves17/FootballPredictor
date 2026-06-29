@@ -37,7 +37,7 @@ public final class QuinielaRunnerV2 {
 
         System.out.println("""
             ╔══════════════════════════════════════════════════╗
-            ║    FOOTBALL PREDICTOR v2 — Triple-Blend + xG     ║
+            ║    FOOTBALL PREDICTOR — Triple-Blend + xG        ║
             ║    Elo 40% + FIFAForm 25% + GLM 35% + xG real    ║
             ╚══════════════════════════════════════════════════╝""");
 
@@ -194,6 +194,7 @@ public final class QuinielaRunnerV2 {
         // ── 10. Mensaje WhatsApp ────────────────────────────────────────────────
         System.out.println("\n[📱] Generando mensaje para WhatsApp...");
         String waMsg = WhatsAppMessenger.buildMessage(jornada, matchday, opt, strategyMatches);
-        WhatsAppMessenger.send(waMsg);
+        // AUTO: intenta CallMeBot API, si falla → portapapeles (nunca pierdes el mensaje)
+        WhatsAppMessenger.sendWithBot(waMsg);
     }
 }

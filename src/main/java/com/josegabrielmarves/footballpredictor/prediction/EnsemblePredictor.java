@@ -50,7 +50,8 @@ public final class EnsemblePredictor {
     }
 
     /**
-     * Probabilidades combinadas modelo + mercado.
+     * Probabilidades combinadas modelo (Elo-simple) + mercado.
+     * Útil para backtest y comparaciones rápidas.
      *
      * @return array [pHomeWin, pDraw, pAwayWin] normalizado.
      *         Si no hay odds disponibles, devuelve solo el modelo (α=1).
@@ -58,9 +59,40 @@ public final class EnsemblePredictor {
     public double[] probabilities(String homeTeam, EloRating home,
                                   String awayTeam, EloRating away,
                                   double homeBonus) {
+        return probabilitiesImpl(homeTeam, home, awayTeam, away, homeBonus, false, null);
+    }
+
+    /**
+     * Probabilidades combinadas modelo (TORNEO: triple-blend + xG + altitud) + mercado.
+     * Usa el mismo modelo que el pipeline principal (PoissonPredictor versión torneo).
+     * Preferir este método para predicciones reales de quiniela.
+     *
+     * @return array [pHomeWin, pDraw, pAwayWin]
+     */
+    public double[] probabilitiesTournament(String homeTeam, EloRating home,
+                                             String awayTeam, EloRating away,
+                                             double homeBonus) {
+        return probabilitiesImpl(homeTeam, home, awayTeam, away, homeBonus, true, null);
+    }
+
+    public double[] probabilitiesTournament(String homeTeam, EloRating home,
+                                             String awayTeam, EloRating away,
+                                             double homeBonus,
+                                             com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage stage) {
+        return probabilitiesImpl(homeTeam, home, awayTeam, away, homeBonus, true, stage);
+    }
+
+    /**
+     * Implementación unificada para ambos modos (simple y torneo).
+     */
+    private double[] probabilitiesImpl(String homeTeam, EloRating home,
+                                        String awayTeam, EloRating away,
+                                        double homeBonus, boolean tournament,
+                                        com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage stage) {
         // Probabilidades del modelo
-        PoissonPredictor.MatchProbabilities model =
-                PoissonPredictor.matchProbabilities(home, away, homeBonus);
+        PoissonPredictor.MatchProbabilities model = tournament
+                ? PoissonPredictor.matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, stage)
+                : PoissonPredictor.matchProbabilities(home, away, homeBonus);
         double[] modelProbs = {model.homeWin(), model.draw(), model.awayWin()};
 
         // Probabilidades del mercado
