@@ -1,11 +1,13 @@
 package com.josegabrielmarves.footballpredictor.ui;
 
+import com.josegabrielmarves.footballpredictor.api.BracketApiClient;
 import com.josegabrielmarves.footballpredictor.model.Match;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.ui.theme.AppTheme;
 
 import javafx.animation.FadeTransition;
+import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -21,6 +23,9 @@ import javafx.scene.text.FontWeight;
 import javafx.util.Duration;
 
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class BracketView extends VBox {
 
@@ -93,23 +98,36 @@ public class BracketView extends VBox {
 
     private final VBox bracketContainer = new VBox();
     private final AnchorPane bracketPane = new AnchorPane();
+    private final BracketApiClient bracketApi = new BracketApiClient();
+    private ScheduledExecutorService refresher;
 
     public BracketView(MainWindow owner) {
         setSpacing(0);
         setStyle("-fx-background-color: #0F1217;");
 
-        Label tt = new Label("FIFA WORLD CUP 2026 — FASE DE GRUPOS");
+        Label tt = new Label("🏆 MUNDIAL 2026 — RESULTADOS EN VIVO");
         tt.setTextFill(AppTheme.GOLD);
         tt.setFont(Font.font("Arial", FontWeight.BOLD, 17));
         tt.setPadding(new Insets(10, 0, 8, 0));
         tt.setAlignment(Pos.CENTER);
         tt.setMaxWidth(Double.MAX_VALUE);
 
+        Label sub = new Label("Datos actualizados cada 6h · openfootball.org");
+        sub.setTextFill(AppTheme.DIM);
+        sub.setFont(Font.font("Arial", 11));
+        sub.setPadding(new Insets(0, 0, 6, 0));
+        sub.setAlignment(Pos.CENTER);
+        sub.setMaxWidth(Double.MAX_VALUE);
+
         groupsGrid.setHgap(HGAP);
         groupsGrid.setVgap(VGAP);
         groupsGrid.setPadding(new Insets(0, PAD, 0, PAD));
 
-        getChildren().addAll(tt, groupsGrid, bracketContainer);
+        getChildren().addAll(tt, sub, groupsGrid, bracketContainer);
+
+        // Auto-refresh cada 6 horas
+        refresher = Executors.newSingleThreadScheduledExecutor();
+        refresher.scheduleAtFixedRate(() -> Platform.runLater(this::refreshBracket), 6, 6, TimeUnit.HOURS);
     }
 
     public void setMatches(List<Match> ms, Map<String, EloRating> r) {
@@ -118,7 +136,7 @@ public class BracketView extends VBox {
             @Override
             protected Void call() {
                 computeGroupData(ms);
-                predictBracket();
+                refreshBracket();
                 return null;
             }
         };
@@ -130,6 +148,49 @@ public class BracketView extends VBox {
             ft.play();
         });
         new Thread(t).start();
+    }
+
+    /**
+     * Carga el bracket REAL desde la API de openfootball.
+     * Reemplaza la prediccion con datos reales.
+     */
+    private void refreshBracket() {
+        try {
+            bracketApi.refresh();
+            var full = bracketApi.getFullBracket();
+
+            leftMatches.clear();
+            rightMatches.clear();
+
+            // R32 — datos reales
+            List<BracketApiClient.BracketMatch> r32 = full.getOrDefault("Round of 32", List.of());
+            if (r32.isEmpty()) {
+                // Fallback a prediccion si no hay datos
+                predictBracket();
+                return;
+            }
+
+            int half = r32.size() / 2;
+            for (int i = 0; i < r32.size(); i++) {
+                BracketApiClient.BracketMatch bm = r32.get(i);
+                String w = bm.isPlayed() ? bm.winner() : "?";
+                BracketMatch bm2 = new BracketMatch(bm.team1(), bm.team2(), w, 1.0);
+                if (i < half) leftMatches.add(bm2);
+                else rightMatches.add(bm2);
+            }
+
+            // Campeon real (si la final ya se jugo)
+            List<BracketApiClient.BracketMatch> finals = full.getOrDefault("Final", List.of());
+            if (!finals.isEmpty() && finals.get(0).isPlayed()) {
+                predictedChampion = finals.get(0).winner();
+            } else {
+                predictedChampion = "? (en juego)";
+            }
+
+        } catch (Exception e) {
+            System.err.println("[BracketView] API error: " + e.getMessage());
+            predictBracket(); // fallback
+        }
     }
 
     private void computeGroupData(List<Match> matches) {
@@ -238,13 +299,25 @@ public class BracketView extends VBox {
                 groupsGrid.add(createGroupCard(GROUP_ORDER[idx++]), col, row);
             }
 
-        Label sep = new Label("CAMPEÓN PROYECTADO:  " + predictedChampion);
-        sep.setTextFill(AppTheme.GOLD);
-        sep.setFont(Font.font("Arial", FontWeight.BOLD, 15));
-        sep.setPadding(new Insets(12, 0, 4, PAD));
-        sep.setAlignment(Pos.CENTER);
-        sep.setMaxWidth(Double.MAX_VALUE);
-        if (getChildren().size() < 3) getChildren().add(sep);
+        // Actualizar o agregar label de campeon/bracket
+        boolean hasRealChamp = !predictedChampion.contains("?");
+        String sepText = hasRealChamp
+                ? "🏆 CAMPEÓN:  " + predictedChampion
+                : "⏳ ELIMINATORIAS — bracket en vivo";
+        Label sep;
+        if (getChildren().size() > 4 && getChildren().get(4) instanceof Label old) {
+            sep = old;
+            sep.setText(sepText);
+            sep.setTextFill(hasRealChamp ? AppTheme.GOLD : AppTheme.DIM);
+        } else {
+            sep = new Label(sepText);
+            sep.setTextFill(hasRealChamp ? AppTheme.GOLD : AppTheme.DIM);
+            sep.setFont(Font.font("Arial", FontWeight.BOLD, 15));
+            sep.setPadding(new Insets(12, 0, 4, PAD));
+            sep.setAlignment(Pos.CENTER);
+            sep.setMaxWidth(Double.MAX_VALUE);
+            getChildren().add(sep);
+        }
 
         renderBracket();
     }
@@ -253,7 +326,7 @@ public class BracketView extends VBox {
         bracketContainer.getChildren().clear();
         if (leftMatches.isEmpty()) return;
 
-        Label title = new Label("FASE ELIMINATORIA — PREDICCIÓN DEL TORNEO");
+        Label title = new Label("FASE ELIMINATORIA — RESULTADOS EN VIVO");
         title.setTextFill(AppTheme.GOLD);
         title.setFont(Font.font("Arial", FontWeight.BOLD, 15));
         title.setPadding(new Insets(14, 0, 2, PAD));

@@ -7,6 +7,7 @@ import com.josegabrielmarves.footballpredictor.prediction.ScoreMatrix;
 import com.josegabrielmarves.footballpredictor.prediction.elo.CalibratedEloRatings;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
+import com.josegabrielmarves.footballpredictor.messaging.WhatsAppMessenger;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2;
 import com.josegabrielmarves.footballpredictor.ui.theme.AppTheme;
@@ -52,13 +53,14 @@ public class MainWindow extends BorderPane {
     private final ObservableList<MatchRow> tableData = FXCollections.observableArrayList();
     private final FilteredList<MatchRow> filteredData;
     private final TableView<MatchRow> tableView;
-    private final Button btnPredict, btnPipeline;
+    private final Button btnPredict, btnPipeline, btnWhatsApp;
     private final Label statusLabel;
     final BracketView bracketView;
     private final MatrixPane matrixPane;
     private final TextArea consoleArea;
     private final TabPane tabs;
     private List<Match> loadedMatches;
+    private List<MatchEV.DualPick> lastPicks; // para el boton WhatsApp
 
     public MainWindow() {
         setBackground(new Background(new BackgroundFill(AppTheme.BG, CornerRadii.EMPTY, Insets.EMPTY)));
@@ -172,20 +174,26 @@ public class MainWindow extends BorderPane {
         btnPredict.setStyle(AppTheme.primaryButtonStyle());
         btnPredict.setDisable(true);
 
-        btnPipeline = new Button("Correr Pipeline Completo");
+        btnPipeline = new Button("▶ Correr Pipeline Completo");
         btnPipeline.setStyle(AppTheme.goldButtonStyle());
+
+        btnWhatsApp = new Button("📱 Enviar a WhatsApp");
+        btnWhatsApp.setStyle("-fx-background-color:#25D366;-fx-text-fill:white;"
+                + "-fx-font-weight:bold;-fx-padding:8 18;-fx-background-radius:4;");
+        btnWhatsApp.setDisable(true);
 
         statusLabel = new Label("Cargando fixture 2026...");
         statusLabel.setTextFill(AppTheme.DIM);
         statusLabel.setFont(Font.font("Arial", 12));
 
-        HBox bottom = new HBox(10, statusLabel, new Region(), btnPipeline, btnPredict);
+        HBox bottom = new HBox(10, statusLabel, new Region(), btnWhatsApp, btnPipeline, btnPredict);
         bottom.setPadding(new Insets(8, 10, 8, 10));
         bottom.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(bottom.getChildren().get(1), Priority.ALWAYS);
 
         btnPredict.setOnAction(e -> generatePredictions());
         btnPipeline.setOnAction(e -> runPipeline());
+        btnWhatsApp.setOnAction(e -> sendToWhatsApp());
 
         setTop(title);
         setCenter(tabs);
@@ -246,19 +254,21 @@ public class MainWindow extends BorderPane {
         if (loadedMatches == null) return;
         btnPredict.setDisable(true);
         statusLabel.setText("Calculando predicciones con motor de torneo...");
+        lastPicks = new ArrayList<>();
         Task<Void> t = new Task<>() {
             @Override
             protected Void call() {
                 Map<String, EloRating> ratings = buildRatings();
-                for (int i = 0; i < loadedMatches.size(); i++) {
-                    Match m = loadedMatches.get(i);
+                int idx = 0;
+                for (Match m : loadedMatches) {
                     EloRating h = ratings.getOrDefault(m.homeTeam, EloRating.initial(m.homeTeam));
                     EloRating a = ratings.getOrDefault(m.awayTeam, EloRating.initial(m.awayTeam));
                     double bonus = isHost(m.homeTeam) ? EloCalculator.HOME_ADVANTAGE : 0;
                     MatchEV.DualPick pick = MatchEV.dualPick(m.homeTeam, h, m.awayTeam, a, bonus);
+                    lastPicks.add(pick);
                     String seg = String.format("%d-%d (%.0f%%)", pick.seguro().homeGoals(), pick.seguro().awayGoals(), pick.pSeguro() * 100);
                     String exc = String.format("%d-%d (%.0f%%)", pick.exacto().homeGoals(), pick.exacto().awayGoals(), pick.pExacto() * 100);
-                    int fi = i;
+                    int fi = idx++;
                     Platform.runLater(() -> {
                         MatchRow r = tableData.get(fi);
                         r.seguro.set(seg);
@@ -271,7 +281,8 @@ public class MainWindow extends BorderPane {
         };
         t.setOnSucceeded(e -> {
             btnPredict.setDisable(false);
-            statusLabel.setText("Predicciones generadas — Seguro=resultado · Exacto=marcador pico");
+            btnWhatsApp.setDisable(false);
+            statusLabel.setText("Predicciones generadas — ✅ Ahora puedes enviarlas a WhatsApp");
         });
         new Thread(t).start();
     }
@@ -298,6 +309,57 @@ public class MainWindow extends BorderPane {
         t.setOnSucceeded(e -> {
             btnPipeline.setDisable(false);
             statusLabel.setText("Pipeline completado");
+        });
+        new Thread(t).start();
+    }
+
+    // ── WhatsApp ──
+
+    private void sendToWhatsApp() {
+        if (loadedMatches == null || lastPicks == null || loadedMatches.isEmpty()) {
+            statusLabel.setText("Primero genera predicciones");
+            return;
+        }
+        btnWhatsApp.setDisable(true);
+        statusLabel.setText("Enviando a WhatsApp...");
+
+        Task<Void> t = new Task<>() {
+            @Override
+            protected Void call() {
+                StringBuilder msg = new StringBuilder();
+                msg.append("⚽ *PREDICCIONES GRUPOS — Mundial 2026*\n");
+                msg.append("📅 ").append(java.time.LocalDate.now()).append("\n");
+                msg.append("👤 Gabriel Marves\n");
+                msg.append("─".repeat(25)).append("\n\n");
+
+                for (int i = 0; i < loadedMatches.size(); i++) {
+                    Match m = loadedMatches.get(i);
+                    if (m.score != null) continue; // solo pendientes
+                    MatchEV.DualPick pick = lastPicks.get(i);
+
+                    msg.append("🏟️ *").append(m.homeTeam).append("* vs *").append(m.awayTeam).append("*\n");
+                    msg.append("   🎯 Seguro: ").append(pick.seguro().homeGoals()).append("-").append(pick.seguro().awayGoals());
+                    msg.append(" (").append(String.format("%.0f%%", pick.pSeguro()*100)).append(")\n");
+                    msg.append("   🎲 Exacto: ").append(pick.exacto().homeGoals()).append("-").append(pick.exacto().awayGoals());
+                    msg.append(" (").append(String.format("%.0f%%", pick.pExacto()*100)).append(")\n");
+                    msg.append("   📊 ").append(pick.risk().label).append("\n\n");
+                }
+
+                msg.append("─".repeat(25)).append("\n");
+                msg.append("⚡ FootballPredictor v2 — Triple Blend + xG\n");
+
+                // Enviar con el sistema automatico del bot
+                WhatsAppMessenger.sendWithBot(msg.toString());
+                return null;
+            }
+        };
+        t.setOnSucceeded(e -> {
+            btnWhatsApp.setDisable(false);
+            statusLabel.setText("✅ Mensaje enviado/copiado al portapapeles");
+        });
+        t.setOnFailed(e -> {
+            btnWhatsApp.setDisable(false);
+            statusLabel.setText("Error al enviar: " + t.getException().getMessage());
         });
         new Thread(t).start();
     }
