@@ -1,0 +1,24 @@
+{
+  "lastUpdated": "2026-06-29",
+  "phase": "Eliminatorias R32",
+  "participants": 17,
+  "players": [
+    {"pos": 1, "name": "Ruben Figueroa", "points": 73, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 2, "name": "Cristhian Brito", "points": 72, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 3, "name": "Moises Chavarria", "points": 72, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 4, "name": "Daniel Ortiz", "points": 69, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 5, "name": "Hector Cerrato", "points": 68, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 6, "name": "Rodrigo Lopez", "points": 67, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 7, "name": "Jorge Brand", "points": 65, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 8, "name": "Jose Pozadas", "points": 65, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 9, "name": "Nissy Rodriguez", "points": 64, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 10, "name": "Jason Avila", "points": 63, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 11, "name": "Luis Flores", "points": 59, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 12, "name": "Gabriel Marves", "points": 59, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 13, "name": "Alfredo Funez", "points": 58, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 14, "name": "Manuel Molina", "points": 57, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 15, "name": "Carlos Davis", "points": 56, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 16, "name": "Daniel Rivera", "points": 43, "exactScores": 0, "knockoutPoints": 0},
+    {"pos": 17, "name": "Carlos Guevara", "points": 0, "exactScores": 0, "knockoutPoints": 0}
+  ]
+}

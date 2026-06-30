@@ -14,7 +14,7 @@ import java.util.*;
 
 public final class TournamentConditioner {
 
-    private static final double PRIOR = 3.0;
+    private static final double PRIOR = 1.5;
     private static final Path XG_DATA_FILE = Path.of("data/xg_wc2026.json");
 
     private final Map<String, List<double[]>> teamData = new HashMap<>();

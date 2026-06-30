@@ -42,7 +42,7 @@ public final class BacktestPipeline {
 
         public static PipelineConfig tripleBlendDefault() {
             return new PipelineConfig(true, true, true,
-                    PoissonPredictor.DC_RHO_TOURNAMENT, 0.40, 0.25, 0.35,
+                    PoissonPredictor.DC_RHO, 0.40, 0.25, 0.35,
                     PoissonPredictor.BASE_GOALS, PoissonPredictor.ELO_GOAL_SCALE,
                     EloCalculator.HOME_ADVANTAGE);
         }

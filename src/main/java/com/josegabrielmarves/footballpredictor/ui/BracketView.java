@@ -13,7 +13,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
+
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -106,14 +106,14 @@ public class BracketView extends VBox {
         setStyle("-fx-background-color: #0F1217;");
 
         Label tt = new Label("🏆 MUNDIAL 2026 — RESULTADOS EN VIVO");
-        tt.setTextFill(AppTheme.GOLD);
+        tt.setTextFill(AppTheme.GOLD());
         tt.setFont(Font.font("Arial", FontWeight.BOLD, 17));
         tt.setPadding(new Insets(10, 0, 8, 0));
         tt.setAlignment(Pos.CENTER);
         tt.setMaxWidth(Double.MAX_VALUE);
 
         Label sub = new Label("Datos actualizados cada 6h · openfootball.org");
-        sub.setTextFill(AppTheme.DIM);
+        sub.setTextFill(AppTheme.DIM());
         sub.setFont(Font.font("Arial", 11));
         sub.setPadding(new Insets(0, 0, 6, 0));
         sub.setAlignment(Pos.CENTER);
@@ -308,10 +308,10 @@ public class BracketView extends VBox {
         if (getChildren().size() > 4 && getChildren().get(4) instanceof Label old) {
             sep = old;
             sep.setText(sepText);
-            sep.setTextFill(hasRealChamp ? AppTheme.GOLD : AppTheme.DIM);
+            sep.setTextFill(hasRealChamp ? AppTheme.GOLD() : AppTheme.DIM());
         } else {
             sep = new Label(sepText);
-            sep.setTextFill(hasRealChamp ? AppTheme.GOLD : AppTheme.DIM);
+            sep.setTextFill(hasRealChamp ? AppTheme.GOLD() : AppTheme.DIM());
             sep.setFont(Font.font("Arial", FontWeight.BOLD, 15));
             sep.setPadding(new Insets(12, 0, 4, PAD));
             sep.setAlignment(Pos.CENTER);
@@ -327,7 +327,7 @@ public class BracketView extends VBox {
         if (leftMatches.isEmpty()) return;
 
         Label title = new Label("FASE ELIMINATORIA — RESULTADOS EN VIVO");
-        title.setTextFill(AppTheme.GOLD);
+        title.setTextFill(AppTheme.GOLD());
         title.setFont(Font.font("Arial", FontWeight.BOLD, 15));
         title.setPadding(new Insets(14, 0, 2, PAD));
         title.setMaxWidth(Double.MAX_VALUE);
@@ -387,12 +387,7 @@ public class BracketView extends VBox {
 
         drawConLines();
 
-        ScrollPane sp = new ScrollPane(bracketPane);
-        sp.setStyle("-fx-background: #0F1217; -fx-control-inner-background: #0F1217;");
-        sp.setPrefHeight(560);
-        sp.setFitToWidth(true);
-        sp.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        bracketContainer.getChildren().add(sp);
+        bracketContainer.getChildren().add(bracketPane);
     }
 
     private void drawConLines() {
@@ -437,7 +432,7 @@ public class BracketView extends VBox {
 
     private void addLine(double x1, double y1, double x2, double y2) {
         Line ln = new Line(x1, y1, x2, y2);
-        ln.setStroke(AppTheme.DIV);
+        ln.setStroke(AppTheme.DIV());
         ln.setStrokeWidth(1.5);
         bracketPane.getChildren().add(ln);
     }
@@ -457,12 +452,12 @@ public class BracketView extends VBox {
         row1.setPadding(new Insets(1, 6, 0, 6));
 
         Label l1 = new Label(t1);
-        l1.setTextFill(t1.equals(winner) ? Color.WHITE : AppTheme.DIM);
+        l1.setTextFill(t1.equals(winner) ? Color.WHITE : AppTheme.DIM());
         l1.setFont(Font.font("Arial", t1.equals(winner) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
         l1.setPrefWidth(BW - 70);
 
         Label l2 = new Label(t2);
-        l2.setTextFill(t2.equals(winner) ? Color.WHITE : AppTheme.DIM);
+        l2.setTextFill(t2.equals(winner) ? Color.WHITE : AppTheme.DIM());
         l2.setFont(Font.font("Arial", t2.equals(winner) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
         l2.setPrefWidth(BW - 70);
 
@@ -474,7 +469,7 @@ public class BracketView extends VBox {
         row2.getChildren().add(new Label());
         String confStr = winner.equals("?") ? "?" : String.format("%.0f%%", bm.confidence * 100);
         Label conf = new Label("→ " + winner + " (" + confStr + ")");
-        conf.setTextFill(AppTheme.ACCENT);
+        conf.setTextFill(AppTheme.ACCENT());
         conf.setFont(Font.font("Arial", FontWeight.BOLD, 9));
         conf.setAlignment(Pos.CENTER_RIGHT);
         HBox.setHgrow(conf, Priority.ALWAYS);
@@ -514,7 +509,7 @@ public class BracketView extends VBox {
         box.setStyle("-fx-background-color: #2A2010; -fx-background-radius: 6; -fx-border-color: #FFD700; -fx-border-radius: 6; -fx-border-width: 2;");
 
         Label l1 = new Label("CAMPEON");
-        l1.setTextFill(AppTheme.GOLD);
+        l1.setTextFill(AppTheme.GOLD());
         l1.setFont(Font.font("Arial", FontWeight.BOLD, 9));
         l1.setAlignment(Pos.CENTER);
         l1.setMaxWidth(Double.MAX_VALUE);
@@ -532,7 +527,7 @@ public class BracketView extends VBox {
 
     private void addRoundLabel(String text, double x, double y) {
         Label lbl = new Label(text);
-        lbl.setTextFill(AppTheme.DIM);
+        lbl.setTextFill(AppTheme.DIM());
         lbl.setFont(Font.font("Arial", FontWeight.BOLD, 10));
         lbl.setLayoutX(x + 4);
         lbl.setLayoutY(y);
@@ -540,7 +535,7 @@ public class BracketView extends VBox {
     }
 
     private Node createGroupCard(String groupName) {
-        Color gc = GCOLOR.getOrDefault(groupName, AppTheme.ACCENT);
+        Color gc = GCOLOR.getOrDefault(groupName, AppTheme.ACCENT());
         List<TeamRow> teams = groupData.get(groupName);
 
         VBox card = new VBox(0);
@@ -563,7 +558,7 @@ public class BracketView extends VBox {
         int[] cw = {145, 25, 25, 25, 30, 30};
         for (int i = 0; i < ch.length; i++) {
             Label l = new Label(ch[i]);
-            l.setTextFill(AppTheme.DIM);
+            l.setTextFill(AppTheme.DIM());
             l.setFont(Font.font("Arial", FontWeight.BOLD, 8));
             l.setPrefWidth(cw[i]);
             if (i > 0) l.setAlignment(Pos.CENTER_RIGHT);
@@ -583,27 +578,27 @@ public class BracketView extends VBox {
                         + (int) (gc.getBlue() * 255) + ", 0.1); -fx-background-radius: 4;");
 
                 Label pos = new Label(String.valueOf(i + 1));
-                pos.setTextFill(i == 0 ? gc : AppTheme.DIM);
+                pos.setTextFill(i == 0 ? gc : AppTheme.DIM());
                 pos.setFont(Font.font("Arial", FontWeight.BOLD, 9));
                 pos.setPrefWidth(14);
 
                 Label name = new Label(shorten(t.name(), 17));
-                name.setTextFill(q ? AppTheme.TXT : AppTheme.DIM);
+                name.setTextFill(q ? AppTheme.TXT() : AppTheme.DIM());
                 name.setFont(Font.font("Arial", q ? FontWeight.BOLD : FontWeight.NORMAL, 10));
                 name.setPrefWidth(130);
 
                 rbox.getChildren().addAll(pos, name,
-                    txt(String.valueOf(t.played()), 24, AppTheme.DIM),
-                    txt(String.valueOf(t.gf()), 24, AppTheme.DIM),
-                    txt(String.valueOf(t.ga()), 24, AppTheme.DIM),
+                    txt(String.valueOf(t.played()), 24, AppTheme.DIM()),
+                    txt(String.valueOf(t.gf()), 24, AppTheme.DIM()),
+                    txt(String.valueOf(t.ga()), 24, AppTheme.DIM()),
                     txt((t.gd() > 0 ? "+" : "") + t.gd(), 28,
-                        t.gd() > 0 ? Color.rgb(0x27, 0xAE, 0x60) : t.gd() < 0 ? Color.rgb(0xE7, 0x4C, 0x3C) : AppTheme.DIM),
-                    txt(String.valueOf(t.pts()), 26, q ? Color.WHITE : AppTheme.DIM));
+                        t.gd() > 0 ? Color.rgb(0x27, 0xAE, 0x60) : t.gd() < 0 ? Color.rgb(0xE7, 0x4C, 0x3C) : AppTheme.DIM()),
+                    txt(String.valueOf(t.pts()), 26, q ? Color.WHITE : AppTheme.DIM()));
                 rows.getChildren().add(rbox);
             }
         } else {
             Label nd = new Label("Sin datos");
-            nd.setTextFill(AppTheme.DIM);
+            nd.setTextFill(AppTheme.DIM());
             nd.setFont(Font.font("Arial", 10));
             nd.setPadding(new Insets(10, 0, 0, 10));
             rows.getChildren().add(nd);

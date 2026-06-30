@@ -3,14 +3,17 @@ package com.josegabrielmarves.footballpredictor.ui;
 import com.josegabrielmarves.footballpredictor.api.datasource.OpenFootballProvider;
 import com.josegabrielmarves.footballpredictor.model.Match;
 import com.josegabrielmarves.footballpredictor.model.Score;
+import com.josegabrielmarves.footballpredictor.prediction.EnsemblePredictor;
 import com.josegabrielmarves.footballpredictor.prediction.ScoreMatrix;
 import com.josegabrielmarves.footballpredictor.prediction.elo.CalibratedEloRatings;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.messaging.WhatsAppMessenger;
+import com.josegabrielmarves.footballpredictor.prediction.RestDaysFactor;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2;
 import com.josegabrielmarves.footballpredictor.ui.theme.AppTheme;
+import com.josegabrielmarves.footballpredictor.ui.StandingsPane;
 
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
@@ -28,8 +31,6 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
-import java.io.OutputStream;
-import java.io.PrintStream;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -57,27 +58,44 @@ public class MainWindow extends BorderPane {
     private final Label statusLabel;
     final BracketView bracketView;
     private final MatrixPane matrixPane;
-    private final TextArea consoleArea;
+    private final TextArea whatsappArea;
     private final TabPane tabs;
+    private final TextField searchField;
+    private final EnsemblePredictor ensemblePredictor;
     private List<Match> loadedMatches;
     private List<MatchEV.DualPick> lastPicks; // para el boton WhatsApp
 
     public MainWindow() {
-        setBackground(new Background(new BackgroundFill(AppTheme.BG, CornerRadii.EMPTY, Insets.EMPTY)));
+        setBackground(new Background(new BackgroundFill(AppTheme.BG(), CornerRadii.EMPTY, Insets.EMPTY)));
 
         Label title = new Label("FOOTBALL PREDICTOR — QUINIELA MUNDIAL 2026");
-        title.setTextFill(AppTheme.TXT);
+        title.setTextFill(AppTheme.TXT());
         title.setFont(Font.font("Arial", FontWeight.BOLD, 20));
         title.setPadding(new Insets(10, 0, 10, 0));
         title.setAlignment(Pos.CENTER);
         title.setMaxWidth(Double.MAX_VALUE);
 
+        ComboBox<AppTheme.Theme> themeSelector = new ComboBox<>();
+        themeSelector.getItems().addAll(AppTheme.Theme.values());
+        themeSelector.setValue(AppTheme.getCurrentTheme());
+        themeSelector.setStyle("-fx-background-color:#1A1E28;-fx-text-fill:white;");
+        themeSelector.setOnAction(e -> {
+            AppTheme.Theme t = themeSelector.getValue();
+            AppTheme.setCurrentTheme(t);
+            applyTheme();
+        });
+
+        HBox headerBox = new HBox(10, title, new Region(), themeSelector);
+        headerBox.setAlignment(Pos.CENTER);
+        HBox.setHgrow(headerBox.getChildren().get(1), Priority.ALWAYS);
+
         // ── Tab 1: Groups & Bracket ──
         bracketView = new BracketView(this);
+        bracketView.setMinWidth(1650);
         ScrollPane bracketScroll = new ScrollPane(bracketView);
         bracketScroll.setStyle("-fx-background: #0F1217; -fx-control-inner-background: #0F1217;");
-        bracketScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        bracketScroll.setFitToWidth(true);
+        bracketScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        bracketScroll.setFitToWidth(false);
 
         // ── Tab 2: All matches ──
         tableView = new TableView<>();
@@ -133,7 +151,7 @@ public class MainWindow extends BorderPane {
         filteredData = new FilteredList<>(tableData, p -> true);
         tableView.setItems(filteredData);
 
-        TextField searchField = new TextField();
+        searchField = new TextField();
         searchField.setPromptText("Buscar equipo...");
         searchField.setStyle(AppTheme.inputStyle());
         searchField.textProperty().addListener((o, a, v) -> {
@@ -150,11 +168,13 @@ public class MainWindow extends BorderPane {
         // ── Tab 3: Matriz 500k ──
         matrixPane = new MatrixPane();
 
-        // ── Tab 4: Console ──
-        consoleArea = new TextArea();
-        consoleArea.setEditable(false);
-        consoleArea.setStyle(AppTheme.consoleStyle());
-        redirectSystemStreams();
+        // ── EnsemblePredictor con mercado ──
+        ensemblePredictor = new EnsemblePredictor();
+
+        // ── Tab 4: WhatsApp Preview ──
+        whatsappArea = new TextArea();
+        whatsappArea.setEditable(false);
+        whatsappArea.setStyle(AppTheme.consoleStyle());
 
         // ── Tabs ──
         tabs = new TabPane();
@@ -165,9 +185,12 @@ public class MainWindow extends BorderPane {
         tab2.setClosable(false);
         Tab tab3 = new Tab("Matriz 500k", matrixPane);
         tab3.setClosable(false);
-        Tab tab4 = new Tab("Consola del Sistema", consoleArea);
+        Tab tab4 = new Tab("📱 WhatsApp Preview", whatsappArea);
         tab4.setClosable(false);
-        tabs.getTabs().addAll(tab1, tab2, tab3, tab4);
+        StandingsPane standingsPane = new StandingsPane();
+        Tab tab5 = new Tab("🏆 Tabla de Puntos", standingsPane);
+        tab5.setClosable(false);
+        tabs.getTabs().addAll(tab1, tab2, tab3, tab4, tab5);
 
         // ── Bottom ──
         btnPredict = new Button("Generar Predicciones");
@@ -183,7 +206,7 @@ public class MainWindow extends BorderPane {
         btnWhatsApp.setDisable(true);
 
         statusLabel = new Label("Cargando fixture 2026...");
-        statusLabel.setTextFill(AppTheme.DIM);
+        statusLabel.setTextFill(AppTheme.DIM());
         statusLabel.setFont(Font.font("Arial", 12));
 
         HBox bottom = new HBox(10, statusLabel, new Region(), btnWhatsApp, btnPipeline, btnPredict);
@@ -195,9 +218,24 @@ public class MainWindow extends BorderPane {
         btnPipeline.setOnAction(e -> runPipeline());
         btnWhatsApp.setOnAction(e -> sendToWhatsApp());
 
-        setTop(title);
+        setTop(headerBox);
         setCenter(tabs);
         setBottom(bottom);
+        applyTheme();
+    }
+
+    // ── Apply theme ──
+
+    private void applyTheme() {
+        setBackground(new Background(new BackgroundFill(AppTheme.BG(), CornerRadii.EMPTY, Insets.EMPTY)));
+        tabs.setStyle("-fx-background: " + AppTheme.hex(AppTheme.BG()) + "; -fx-text-fill: " + AppTheme.hex(AppTheme.TEXT()) + ";");
+        tableView.setStyle(AppTheme.tableStyle());
+        statusLabel.setTextFill(AppTheme.DIM());
+        btnPredict.setStyle(AppTheme.primaryButtonStyle());
+        btnPipeline.setStyle(AppTheme.goldButtonStyle());
+        whatsappArea.setStyle(AppTheme.consoleStyle());
+        searchField.setStyle(AppTheme.inputStyle());
+        bracketView.setStyle("-fx-background-color: " + AppTheme.hex(AppTheme.BG()) + ";");
     }
 
     // ── Load ──
@@ -212,6 +250,9 @@ public class MainWindow extends BorderPane {
         t.setOnSucceeded(e -> {
             loadedMatches = t.getValue();
             loadedMatches.sort(Comparator.comparing(m -> m.date));
+
+            // Inicializar factor de descanso con partidos ya jugados
+            RestDaysFactor.initialize(loadedMatches);
 
             // Filtrar solo partidos NO jugados (sin marcador)
             List<Match> upcoming = loadedMatches.stream()
@@ -253,7 +294,7 @@ public class MainWindow extends BorderPane {
     private void generatePredictions() {
         if (loadedMatches == null) return;
         btnPredict.setDisable(true);
-        statusLabel.setText("Calculando predicciones con motor de torneo...");
+        statusLabel.setText("Calculando predicciones con motor de torneo + mercado...");
         lastPicks = new ArrayList<>();
         Task<Void> t = new Task<>() {
             @Override
@@ -264,7 +305,9 @@ public class MainWindow extends BorderPane {
                     EloRating h = ratings.getOrDefault(m.homeTeam, EloRating.initial(m.homeTeam));
                     EloRating a = ratings.getOrDefault(m.awayTeam, EloRating.initial(m.awayTeam));
                     double bonus = isHost(m.homeTeam) ? EloCalculator.HOME_ADVANTAGE : 0;
-                    MatchEV.DualPick pick = MatchEV.dualPick(m.homeTeam, h, m.awayTeam, a, bonus);
+                    // Usar dualPickWithMarket para incluir odds
+                    MatchEV.DualPick pick = MatchEV.dualPickWithMarket(
+                            m.homeTeam, h, m.awayTeam, a, bonus, ensemblePredictor);
                     lastPicks.add(pick);
                     String seg = String.format("%d-%d (%.0f%%)", pick.seguro().homeGoals(), pick.seguro().awayGoals(), pick.pSeguro() * 100);
                     String exc = String.format("%d-%d (%.0f%%)", pick.exacto().homeGoals(), pick.exacto().awayGoals(), pick.pExacto() * 100);
@@ -282,7 +325,10 @@ public class MainWindow extends BorderPane {
         t.setOnSucceeded(e -> {
             btnPredict.setDisable(false);
             btnWhatsApp.setDisable(false);
-            statusLabel.setText("Predicciones generadas — ✅ Ahora puedes enviarlas a WhatsApp");
+            // Actualizar preview de WhatsApp
+            buildWhatsAppPreview();
+            statusLabel.setText("Predicciones generadas — ✅ Revisa la pestaña '📱 WhatsApp Preview'");
+            tabs.getSelectionModel().select(3);
         });
         new Thread(t).start();
     }
@@ -293,7 +339,7 @@ public class MainWindow extends BorderPane {
         btnPipeline.setDisable(true);
         statusLabel.setText("Corriendo pipeline completo...");
         tabs.getSelectionModel().select(3);
-        consoleArea.clear();
+        whatsappArea.clear();
         Task<Void> t = new Task<>() {
             @Override
             protected Void call() {
@@ -313,7 +359,68 @@ public class MainWindow extends BorderPane {
         new Thread(t).start();
     }
 
-    // ── WhatsApp ──
+    // ── WhatsApp Preview ──
+
+    /** Construye el mensaje de WhatsApp y lo muestra en la pestaña de preview. */
+    private void buildWhatsAppPreview() {
+        if (loadedMatches == null || lastPicks == null) return;
+        String msg = buildWhatsAppMessage();
+        whatsappArea.setText(msg);
+    }
+
+    /** Construye el mensaje completo de WhatsApp con mercado + recomendaciones. */
+    private String buildWhatsAppMessage() {
+        StringBuilder msg = new StringBuilder();
+        msg.append("⚽ *PREDICCIONES GRUPOS — Mundial 2026*\n");
+        msg.append("📅 ").append(java.time.LocalDate.now()).append("\n");
+        msg.append("👤 Gabriel Marves\n");
+        msg.append("🤖 Motor: Triple Blend + Mercado (α=0.15)\n");
+        msg.append("─".repeat(25)).append("\n\n");
+
+        int exactosRecomendados = 0;
+        int totalPendientes = 0;
+
+        for (int i = 0; i < loadedMatches.size(); i++) {
+            Match m = loadedMatches.get(i);
+            if (m.score != null) continue; // solo pendientes
+            totalPendientes++;
+            MatchEV.DualPick pick = lastPicks.get(i);
+
+            msg.append("🏟️ *").append(m.homeTeam).append("* vs *").append(m.awayTeam).append("*\n");
+            msg.append("   📊 ").append(pick.resultLabel()).append("\n");
+            msg.append("   🎯 Seguro (1pt): ").append(pick.seguro().homeGoals()).append("-").append(pick.seguro().awayGoals());
+            msg.append("  (").append(String.format("%.0f%%", pick.pSeguro()*100)).append(")\n");
+            msg.append("   🎲 Exacto (3pts): ").append(pick.exacto().homeGoals()).append("-").append(pick.exacto().awayGoals());
+            msg.append("  (").append(String.format("%.0f%%", pick.pExacto()*100)).append(")\n");
+            msg.append("   ").append(pick.risk().label);
+
+            // Recomendación: cuándo arriesgar el exacto vs ir por el seguro
+            String rec = pick.pExacto() >= 0.08
+                    ? " ✅ RECOMENDADO (exacto ≥8%)"
+                    : pick.pSeguro() >= 0.20
+                    ? " ✔️ Ir por seguro (exacto <8%)"
+                    : pick.risk() == MatchEV.Risk.FIJO || pick.risk() == MatchEV.Risk.FUERTE
+                    ? " → Recomiendo seguro (resultado confiable)"
+                    : " ⚠️ Partido abierto — considera DOBLE o TRIPLE";
+            msg.append(rec).append("\n");
+
+            if (pick.pExacto() >= 0.08) exactosRecomendados++;
+
+            msg.append("\n");
+        }
+
+        msg.append("─".repeat(25)).append("\n");
+        msg.append("📊 *RESUMEN*\n");
+        msg.append("   Partidos: ").append(totalPendientes).append("\n");
+        msg.append("   Exactos recomendados (≥8%): ").append(exactosRecomendados).append("/").append(totalPendientes).append("\n");
+        msg.append("   🎯 Estrategia: arriesgar exacto cuando ≥8%, seguro en el resto\n");
+        msg.append("─".repeat(25)).append("\n");
+        msg.append("⚡ FootballPredictor — Triple Blend + Mercado + xG\n");
+
+        return msg.toString();
+    }
+
+    // ── WhatsApp Send ──
 
     private void sendToWhatsApp() {
         if (loadedMatches == null || lastPicks == null || loadedMatches.isEmpty()) {
@@ -323,33 +430,12 @@ public class MainWindow extends BorderPane {
         btnWhatsApp.setDisable(true);
         statusLabel.setText("Enviando a WhatsApp...");
 
+        String message = buildWhatsAppMessage();
+
         Task<Void> t = new Task<>() {
             @Override
             protected Void call() {
-                StringBuilder msg = new StringBuilder();
-                msg.append("⚽ *PREDICCIONES GRUPOS — Mundial 2026*\n");
-                msg.append("📅 ").append(java.time.LocalDate.now()).append("\n");
-                msg.append("👤 Gabriel Marves\n");
-                msg.append("─".repeat(25)).append("\n\n");
-
-                for (int i = 0; i < loadedMatches.size(); i++) {
-                    Match m = loadedMatches.get(i);
-                    if (m.score != null) continue; // solo pendientes
-                    MatchEV.DualPick pick = lastPicks.get(i);
-
-                    msg.append("🏟️ *").append(m.homeTeam).append("* vs *").append(m.awayTeam).append("*\n");
-                    msg.append("   🎯 Seguro: ").append(pick.seguro().homeGoals()).append("-").append(pick.seguro().awayGoals());
-                    msg.append(" (").append(String.format("%.0f%%", pick.pSeguro()*100)).append(")\n");
-                    msg.append("   🎲 Exacto: ").append(pick.exacto().homeGoals()).append("-").append(pick.exacto().awayGoals());
-                    msg.append(" (").append(String.format("%.0f%%", pick.pExacto()*100)).append(")\n");
-                    msg.append("   📊 ").append(pick.risk().label).append("\n\n");
-                }
-
-                msg.append("─".repeat(25)).append("\n");
-                msg.append("⚡ FootballPredictor v2 — Triple Blend + xG\n");
-
-                // Enviar con el sistema automatico del bot
-                WhatsAppMessenger.sendWithBot(msg.toString());
+                WhatsAppMessenger.sendWithBot(message);
                 return null;
             }
         };
@@ -362,25 +448,6 @@ public class MainWindow extends BorderPane {
             statusLabel.setText("Error al enviar: " + t.getException().getMessage());
         });
         new Thread(t).start();
-    }
-
-    // ── Console redirection ──
-
-    private void redirectSystemStreams() {
-        OutputStream out = new OutputStream() {
-            @Override
-            public void write(int b) {
-                // ignoramos bytes sueltos; PrintStream usualmente escribe batches
-            }
-
-            @Override
-            public void write(byte[] b, int off, int len) {
-                String text = new String(b, off, len, java.nio.charset.StandardCharsets.UTF_8);
-                Platform.runLater(() -> consoleArea.appendText(text));
-            }
-        };
-        System.setOut(new PrintStream(out, true, java.nio.charset.StandardCharsets.UTF_8));
-        System.setErr(new PrintStream(out, true, java.nio.charset.StandardCharsets.UTF_8));
     }
 
     // ── Helpers ──
@@ -416,7 +483,7 @@ public class MainWindow extends BorderPane {
                 if (idx.intValue() >= 0) showMatch(idx.intValue());
             });
 
-            info.setTextFill(AppTheme.TXT);
+            info.setTextFill(AppTheme.TXT());
             info.setFont(Font.font("Arial", FontWeight.BOLD, 17));
             info.setPadding(new Insets(12, 0, 12, 0));
 
@@ -533,7 +600,7 @@ public class MainWindow extends BorderPane {
                     }
 
             g.setFont(Font.font("Arial", FontWeight.BOLD, 13));
-            g.setFill(AppTheme.ACCENT);
+            g.setFill(AppTheme.ACCENT());
             g.fillText(awayTeam + " (goles →)", x0, y0 - 40);
             g.save();
             g.translate(25, y0 + N * cell / 2.0);
@@ -542,12 +609,12 @@ public class MainWindow extends BorderPane {
             g.restore();
 
             for (int a = 0; a < N; a++) {
-                g.setFill(AppTheme.DIM);
+                g.setFill(AppTheme.DIM());
                 g.setFont(Font.font("Arial", FontWeight.BOLD, 12));
                 g.fillText(String.valueOf(a), x0 + a * cell + cell / 2.0 - 4, y0 - 8);
             }
             for (int i = 0; i < N; i++) {
-                g.setFill(AppTheme.DIM);
+                g.setFill(AppTheme.DIM());
                 g.fillText(String.valueOf(i), x0 - 24, y0 + i * cell + cell / 2.0 + 5);
             }
 
@@ -560,11 +627,11 @@ public class MainWindow extends BorderPane {
                     g.fillRoundRect(x0 + j * cell + 2, y0 + i * cell + 2, cell - 4, cell - 4, 8, 8);
 
                     if (i == mh && j == ma) {
-                        g.setStroke(AppTheme.GOLD);
+                        g.setStroke(AppTheme.GOLD());
                         g.setLineWidth(3);
                         g.strokeRoundRect(x0 + j * cell + 2, y0 + i * cell + 2, cell - 4, cell - 4, 8, 8);
                     }
-                    g.setFill(p > maxP * 0.25 ? Color.WHITE : AppTheme.DIM);
+                    g.setFill(p > maxP * 0.25 ? Color.WHITE : AppTheme.DIM());
                     g.setFont(Font.font("Arial", FontWeight.BOLD, 12));
                     g.fillText(i + "-" + j, x0 + j * cell + cell / 2.0 - 12, y0 + i * cell + cell / 2.0 - 2);
                     g.setFont(Font.font("Arial", FontWeight.NORMAL, 11));

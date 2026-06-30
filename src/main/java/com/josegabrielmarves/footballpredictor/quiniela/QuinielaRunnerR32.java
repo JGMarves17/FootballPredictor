@@ -13,6 +13,7 @@ import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage;
 import com.josegabrielmarves.footballpredictor.rivals.*;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -132,12 +133,22 @@ public final class QuinielaRunnerR32 {
                     System.out.printf("    🏟️  #%d: %s vs %s [%s]%n",
                             bm.matchNumber(), bm.team1(), bm.team2(), bm.date());
                 }
-                // Convertir BracketMatch → MatchInput para el motor
+                // Convertir BracketMatch → MatchInput para el motor (con fecha real del partido)
+                DateTimeFormatter dtFmt = DateTimeFormatter.ISO_LOCAL_DATE;
                 matchday = new ArrayList<>();
                 for (BracketApiClient.BracketMatch bm : upcoming) {
                     if (bm.isPlaceholder()) continue;
+                    LocalDate matchDate;
+                    try {
+                        matchDate = LocalDate.parse(bm.date(), dtFmt);
+                    } catch (Exception e) {
+                        // Fallback: usar hoy si la fecha no se puede parsear
+                        matchDate = LocalDate.now();
+                        System.out.printf("  ⚠️  No se pudo parsear fecha \"%s\" para %s vs %s, usando hoy%n",
+                                bm.date(), bm.team1(), bm.team2());
+                    }
                     matchday.add(new MatchdayEngine.MatchInput(
-                            bm.team1(), bm.team2(), Stage.DIECISEISAVOS));
+                            bm.team1(), bm.team2(), Stage.DIECISEISAVOS, matchDate));
                 }
             }
         } catch (Exception e) {
@@ -194,26 +205,26 @@ public final class QuinielaRunnerR32 {
         System.out.printf("  → %d partidos en historial, GLM calibrado%n",
                 updater.matchesRecorded());
 
-        // ── 5. CLASIFICACIÓN ACTUAL (27-jun, grupos completos) ────────────────
+        // ── 5. CLASIFICACIÓN ACTUAL (29-jun, R32 completado) ────────────────
         System.out.println("[5/7] Cargando clasificación actual...");
         Map<String, Integer> standings = new LinkedHashMap<>();
-        standings.put(StandingsSimulator.US,  19);   // Gabriel Marves (P17)
-        standings.put("Rodrigo Lopez",        38);
-        standings.put("Jason Avila",          36);
-        standings.put("Ruben Figueroa",       33);
-        standings.put("Nissy Rodriguez",      31);
-        standings.put("Daniel Ortiz",         31);
-        standings.put("Cristhian Brito",      28);
-        standings.put("Carlos Guevara",       28);
-        standings.put("Hector Cerrato",       27);
-        standings.put("Alfredo Funez",        27);
-        standings.put("Jose Pozadas",         27);
-        standings.put("Carlos Davis",         26);
-        standings.put("Daniel Rivera",        25);
-        standings.put("Moises Chavarria",     25);
-        standings.put("Luis Flores",          24);
-        standings.put("Manuel Molina",        24);
-        standings.put("Jorge Brand",          22);
+        standings.put(StandingsSimulator.US,  59);   // Gabriel Marves
+        standings.put("Rodrigo Lopez",        67);
+        standings.put("Jason Avila",          63);
+        standings.put("Ruben Figueroa",       73);
+        standings.put("Nissy Rodriguez",      64);
+        standings.put("Daniel Ortiz",         69);
+        standings.put("Cristhian Brito",      72);
+        standings.put("Carlos Guevara",        0);
+        standings.put("Hector Cerrato",       68);
+        standings.put("Alfredo Funez",        58);
+        standings.put("Jose Pozadas",         65);
+        standings.put("Carlos Davis",         56);
+        standings.put("Daniel Rivera",        43);
+        standings.put("Moises Chavarria",     72);
+        standings.put("Luis Flores",          59);
+        standings.put("Manuel Molina",        57);
+        standings.put("Jorge Brand",          65);
 
         // ── 6. PERFILES DE RIVALES ─────────────────────────────────────────────
         System.out.println("[6/7] Cargando perfiles de rivales...");
@@ -276,8 +287,8 @@ public final class QuinielaRunnerR32 {
         }
 
         long t0 = System.currentTimeMillis();
-        // ALL-IN: más candidatos, solo P(1°), +50% variantes
-        StrategyOptimizer.OptimizationResult opt = StrategyOptimizer.optimizeAllIn(
+        // Balanceada: maximiza EV de premio (60/30/10) — óptimo para posición media
+        StrategyOptimizer.OptimizationResult opt = StrategyOptimizer.optimize(
                 strategyMatches, standings, rivals, STAGE, 3, 5_000, 2026L);
         System.out.printf("[✓] Listo en %.1fs%n", (System.currentTimeMillis()-t0)/1000.0);
 
@@ -361,7 +372,9 @@ public final class QuinielaRunnerR32 {
     }
 
     /**
-     * Construye mensaje optimizado para WhatsApp con énfasis en eliminatorias.
+     * Construye mensaje optimizado para WhatsApp con TOP 3 marcadores de cada partido.
+     * Siempre incluye: probabilidades 1X2 del torneo, top 3 marcadores con pico,
+     * riesgo, y el pick recomendado (seguro/exacto).
      */
     private static String buildWhatsAppMessage(
             int jornada,
@@ -378,7 +391,7 @@ public final class QuinielaRunnerR32 {
         sb.append(" · Esp.").append(String.format("%.2f", opt.expectedPosition()));
         sb.append("/").append(opt.participants()).append("\n");
         sb.append("💡 Pts: ").append(PTS_RESULT).append("R / ").append(PTS_EXACT).append("E · −10L fallo\n");
-        sb.append("─".repeat(25)).append("\n\n");
+        sb.append(" ".repeat(30)).append("\n");
 
         for (int i = 0; i < matchday.size(); i++) {
             MatchdayEngine.MatchInput m = matchday.get(i);
@@ -386,17 +399,54 @@ public final class QuinielaRunnerR32 {
             Score p = opt.predictions().get(i);
             MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), MatchdayEngine.hostBonus(m.team1()));
 
-            double pHome = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), MatchdayEngine.hostBonus(m.team1())).homeWin();
-            double pDraw = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), MatchdayEngine.hostBonus(m.team1())).draw();
-            double pAway = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), MatchdayEngine.hostBonus(m.team1())).awayWin();
+            // Probabilidades 1X2 del torneo (Triple Blend + xG)
+            double bonus = MatchdayEngine.hostBonus(m.team1());
+            var probs = PoissonPredictor.matchProbabilitiesTournament(
+                    sm.homeTeam(), sm.home(), sm.awayTeam(), sm.away(), bonus, m.stage());
+
+            // Top 3 marcadores desde la matriz del torneo
+            double[][] matrix = PoissonPredictor.scoreMatrixTournament(
+                    sm.homeTeam(), sm.home(), sm.awayTeam(), sm.away(), bonus, m.stage());
+            // Extraer top 3 como [score, prob] ordenados descendente
+            var topScores = new ArrayList<double[]>();
+            for (int h = 0; h <= PoissonPredictor.MAX_GOALS; h++) {
+                for (int a = 0; a <= PoissonPredictor.MAX_GOALS; a++) {
+                    if (matrix[h][a] > 0.005) { // mínimo 0.5%
+                        topScores.add(new double[]{h, a, matrix[h][a]});
+                    }
+                }
+            }
+            topScores.sort((a, b) -> Double.compare(b[2], a[2]));
+            int topCount = Math.min(3, topScores.size());
+
+            // Construir bloque del partido
+            String riesgoIcon = switch (riesgo) {
+                case FIJO    -> "🔒";
+                case FUERTE  -> "🔵";
+                case DOBLE   -> "🟡";
+                case TRIPLE  -> "⚡";
+                default      -> "▪️";
+            };
 
             sb.append("🏟️ *").append(m.team1()).append("* vs *").append(m.team2()).append("*\n");
-            sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%", pHome*100, pDraw*100, pAway*100)).append("\n");
-            sb.append("   🎯 *").append(p.homeGoals()).append("-").append(p.awayGoals()).append("*  (").append(riesgo.label).append(")\n");
+            sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%",
+                    probs.homeWin()*100, probs.draw()*100, probs.awayWin()*100)).append("\n");
+
+            // Top 3 marcadores
+            for (int t = 0; t < topCount; t++) {
+                double[] sc = topScores.get(t);
+                String medal = (t == 0) ? "🥇" : (t == 1) ? "🥈" : "🥉";
+                String isPick = (sc[0] == p.homeGoals() && sc[1] == p.awayGoals()) ? " ◀ PICK" : "";
+                sb.append(String.format("   %s %d-%d (%.1f%%)%s%n",
+                        medal, (int)sc[0], (int)sc[1], sc[2]*100, isPick));
+            }
+
+            sb.append("   🎯 *").append(p.homeGoals()).append("-").append(p.awayGoals()).append("*  (")
+                    .append(riesgoIcon).append(" ").append(riesgo.label).append(")\n");
             sb.append("\n");
         }
 
-        sb.append("─".repeat(25)).append("\n");
+        sb.append(" ".repeat(30)).append("\n");
         sb.append("⚡ FootballPredictor — ALL-IN · Triple Blend + xG\n");
         sb.append("🎯 Estrategia ALL-IN (máx P(1°))\n");
         sb.append("📱 ").append(java.time.LocalDateTime.now()).append("\n");

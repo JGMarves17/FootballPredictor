@@ -37,7 +37,11 @@ public final class MatchdayEngine {
     //      Usamos team1/team2 como nombres neutrales. El bonus de sede
     //      se calcula automáticamente con hostBonus() según el equipo.
     //
-    public record MatchInput(String team1, String team2, QuinielaScorer.Stage stage) {}
+    public record MatchInput(String team1, String team2, QuinielaScorer.Stage stage, LocalDate date) {
+        public MatchInput(String team1, String team2, QuinielaScorer.Stage stage) {
+            this(team1, team2, stage, LocalDate.now());
+        }
+    }
     public record MatchResult(String team1, String team2, int goals1, int goals2) {}
 
     /** ¿Este equipo juega como sede (México/USA/Canada)? */
@@ -64,17 +68,18 @@ public final class MatchdayEngine {
      */
     public static void preMatchday(int jornada, List<MatchInput> matches,
                                    Map<String, EloRating> ratings, LocalDate today) {
-        PoissonPredictor.setRefDate(today);
-
         System.out.printf("%n╔══════════════════════════════════════════════════╗%n");
         System.out.printf("║  PRE-JORNADA %d — %s  (%,d simulaciones)  ║%n",
                 jornada, today, SIMS);
         System.out.printf("╚══════════════════════════════════════════════════╝%n");
 
         JsonArray jsonMatches = new JsonArray();
-        long seed = today.toEpochDay();
 
-        for (MatchInput m : matches) {
+        for (int mi = 0; mi < matches.size(); mi++) {
+            MatchInput m = matches.get(mi);
+            // Usar la fecha específica del partido (o today como fallback)
+            PoissonPredictor.setRefDate(m.date());
+            long seed = (mi + 1) * m.date().toEpochDay();
             double bonus = hostBonus(m.team1()); // team1 es local simbólico en el fixture
             EloRating home = ratings.getOrDefault(m.team1(),
                     CalibratedEloRatings.getRating(m.team1()));
@@ -130,6 +135,7 @@ public final class MatchdayEngine {
                     "Local", "Visitante", "Modelo", "Ensemble (α=0.15)");
             System.out.println("─".repeat(80));
             for (MatchInput m : matches) {
+                PoissonPredictor.setRefDate(m.date());
                 double bonus = hostBonus(m.team1());
                 EloRating home = ratings.getOrDefault(m.team1(),
                         CalibratedEloRatings.getRating(m.team1()));

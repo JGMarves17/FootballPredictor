@@ -84,25 +84,25 @@ public final class QuinielaRunnerV2 {
         System.out.printf("  → %d partidos en historial, GLM calibrado%n",
                 updater.matchesRecorded());
 
-        // ── 4. CLASIFICACIÓN ACTUAL (REAL — 24-jun, jornada 3 parcial) ──────
+        // ── 4. CLASIFICACIÓN ACTUAL (REAL — 29-jun, R32 completado) ──────
         Map<String, Integer> standings = new LinkedHashMap<>();
-        standings.put(StandingsSimulator.US,  19);   // Gabriel Marves
-        standings.put("Rodrigo Lopez",        38);
-        standings.put("Jason Avila",          36);
-        standings.put("Ruben Figueroa",       33);
-        standings.put("Nissy Rodriguez",      31);
-        standings.put("Daniel Ortiz",         31);
-        standings.put("Cristhian Brito",      28);
-        standings.put("Carlos Guevara",       28);
-        standings.put("Hector Cerrato",       27);
-        standings.put("Alfredo Funez",        27);
-        standings.put("Jose Pozadas",         27);
-        standings.put("Carlos Davis",         26);
-        standings.put("Daniel Rivera",        25);
-        standings.put("Moises Chavarria",     25);
-        standings.put("Luis Flores",          24);
-        standings.put("Manuel Molina",        24);
-        standings.put("Jorge Brand",          22);
+        standings.put(StandingsSimulator.US,  59);   // Gabriel Marves
+        standings.put("Rodrigo Lopez",        67);
+        standings.put("Jason Avila",          63);
+        standings.put("Ruben Figueroa",       73);
+        standings.put("Nissy Rodriguez",      64);
+        standings.put("Daniel Ortiz",         69);
+        standings.put("Cristhian Brito",      72);
+        standings.put("Carlos Guevara",        0);
+        standings.put("Hector Cerrato",       68);
+        standings.put("Alfredo Funez",        58);
+        standings.put("Jose Pozadas",         65);
+        standings.put("Carlos Davis",         56);
+        standings.put("Daniel Rivera",        43);
+        standings.put("Moises Chavarria",     72);
+        standings.put("Luis Flores",          59);
+        standings.put("Manuel Molina",        57);
+        standings.put("Jorge Brand",          65);
 
         // ── 5. PERFILES DE RIVALES ────────────────────────────────────────────
         List<RivalProfile> rivals = List.of(
@@ -126,12 +126,12 @@ public final class QuinielaRunnerV2 {
 
         // ── 6. PARTIDOS DE LA JORNADA ─────────────────────────────────────────
         // ⚠️  Sin bonus hardcodeado — MatchdayEngine.hostBonus() lo calcula solo
-        int jornada = 3;
+        int jornada = 4; // R32 (Dieciseisavos)
         List<MatchdayEngine.MatchInput> matchday = List.of(
-                new MatchdayEngine.MatchInput("Czech Republic",       "Mexico",       Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("South Africa",         "South Korea",  Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("Bosnia & Herzegovina", "Switzerland",  Stage.GRUPOS),
-                new MatchdayEngine.MatchInput("Qatar",                "Canada",       Stage.GRUPOS)
+                new MatchdayEngine.MatchInput("Brazil",       "Qatar",       Stage.DIECISEISAVOS),
+                new MatchdayEngine.MatchInput("Argentina",    "South Korea", Stage.DIECISEISAVOS),
+                new MatchdayEngine.MatchInput("Germany",      "Canada",      Stage.DIECISEISAVOS),
+                new MatchdayEngine.MatchInput("France",       "Mexico",      Stage.DIECISEISAVOS)
         );
 
         // ── 7. ScoreMatrix 500k por partido ──────────────────────────────────
@@ -172,7 +172,7 @@ public final class QuinielaRunnerV2 {
 
         long t0 = System.currentTimeMillis();
         StrategyOptimizer.OptimizationResult opt = StrategyOptimizer.optimize(
-                strategyMatches, standings, rivals, Stage.GRUPOS, 3, 5_000, 2026L);
+                strategyMatches, standings, rivals, Stage.DIECISEISAVOS, 3, 5_000, 2026L);
         System.out.printf("[6/6] Listo en %.1fs%n", (System.currentTimeMillis()-t0)/1000.0);
 
         opt.print(strategyMatches);

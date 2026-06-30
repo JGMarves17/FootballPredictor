@@ -4,6 +4,8 @@ import com.josegabrielmarves.footballpredictor.model.Score;
 import com.josegabrielmarves.footballpredictor.prediction.AltitudeFactor;
 import com.josegabrielmarves.footballpredictor.prediction.EnsemblePredictor;
 import com.josegabrielmarves.footballpredictor.prediction.FIFAFormCalculator;
+import com.josegabrielmarves.footballpredictor.prediction.HeadToHeadFactor;
+import com.josegabrielmarves.footballpredictor.prediction.RestDaysFactor;
 import com.josegabrielmarves.footballpredictor.prediction.TournamentConditioner;
 import com.josegabrielmarves.footballpredictor.prediction.ProbabilityCalibrator;
 import com.josegabrielmarves.footballpredictor.prediction.TournamentGLM;
@@ -40,8 +42,17 @@ public final class PoissonPredictor {
     public static final double MAX_LAMBDA        = 5.00;
     public static final int    MAX_GOALS         = 9;
     public static final double DC_RHO            = -0.13; // histórico (backtest multi-mundial)
-    public static final double DC_RHO_TOURNAMENT = -0.09; // calibrado WC 2026
     public static final double ELO_GOAL_SCALE    = 740.0; // escala log-link Elo→goles
+
+    /**
+     * Coeficiente Dixon-Coles según fase del torneo.
+     * Grupos → -0.15 (más goles, correlación negativa más fuerte)
+     * Eliminatorias → -0.09 (partidos más cerrados, menos goles)
+     */
+    public static double rhoForStage(Stage stage) {
+        if (stage == null || stage == Stage.GRUPOS) return -0.15;
+        return -0.09;
+    }
 
     private static Path     dataFile = Path.of("data/results.json");
     private static LocalDate refDate = null;
@@ -110,8 +121,14 @@ public final class PoissonPredictor {
             glmMatches = glm.matchesUsed();
         }
 
-        // 4. Pesos dinámicos según etapa y cuántos partidos tiene el GLM
-        double[] stageWeights = stageWeights(stage, glmMatches, fH.matchesUsed() > 0);
+        // 4. Pesos DINÁMICOS: consideran etapa, partidos GLM, diferencia Elo,
+        //    confianza de forma, y confianza H2H
+        double eloDiff = home.rating() - away.rating();
+        double formConfidence = Math.min(fH.matchesUsed(), fA.matchesUsed()) / 50.0;
+        HeadToHeadFactor.H2HResult h2h = HeadToHeadFactor.getH2H(homeTeam, awayTeam);
+        double h2hConfidence = Math.min(1.0, h2h.matchesPlayed() / 10.0);
+        double[] stageWeights = stageWeights(stage, glmMatches, fH.matchesUsed() > 0,
+                eloDiff, formConfidence, h2hConfidence);
         double wElo  = stageWeights[0];
         double wForm = stageWeights[1];
         double wGlm  = stageWeights[2];
@@ -126,42 +143,84 @@ public final class PoissonPredictor {
         // 6. Ajuste por altitud de la sede (México ~1,800m)
         adjusted = AltitudeFactor.adjustLambdas(adjusted[0], adjusted[1], homeTeam, awayTeam);
 
+        // 7. Ajuste por Head-to-Head histórico (desde results.json)
+        if (h2h.matchesPlayed() >= 3) {
+            adjusted[0] *= h2h.homeAdvantage();
+            adjusted[1] *= h2h.awayAdvantage();
+            if (Math.abs(h2h.homeAdvantage() - 1.0) > 0.02) {
+                System.out.printf("  [H2H] %s vs %s — local: %.3f, visit: %.3f (%d partidos)%n",
+                        homeTeam, awayTeam, h2h.homeAdvantage(), h2h.awayAdvantage(), h2h.matchesPlayed());
+            }
+        }
+
+        // 8. Ajuste por días de descanso
+        double restFactor = RestDaysFactor.getHomeRestFactor(homeTeam, awayTeam, today());
+        adjusted[0] *= restFactor;
+        adjusted[1] /= restFactor;  // factor inverso para visitante
+        if (Math.abs(restFactor - 1.0) > 0.02) {
+            System.out.printf("  [DESCANSO] %s vs %s — factor: %.3f%n",
+                    homeTeam, awayTeam, restFactor);
+        }
+
         return adjusted;
     }
 
-    public static double[] stageWeights(Stage stage, int glmMatches, boolean hasForm) {
-        double baseGlm = glmMatches >= 16 ? 0.35 : glmMatches >= 8 ? 0.25 : 0.15;
+    /**
+     * Pesos DINÁMICOS: no solo dependen de la etapa y partidos del GLM,
+     * sino también de la confianza de cada modelo para este partido específico.
+     *
+     * - Elo pesa más cuando hay gran diferencia de rating (favorito claro)
+     * - Forma pesa más cuando el equipo tiene muchos partidos recientes
+     * - GLM pesa más cuando tiene suficientes datos del torneo
+     * - H2H aporta un pequeño boost cuando hay muchos enfrentamientos previos
+     */
+    public static double[] stageWeights(Stage stage, int glmMatches, boolean hasForm,
+                                         double eloDiff, double formConfidence, double h2hConfidence) {
+        double baseGlm;
+        if (glmMatches >= 16) baseGlm = 0.35;
+        else if (glmMatches >= 8) baseGlm = 0.25;
+        else if (glmMatches >= 4) baseGlm = 0.20;
+        else baseGlm = 0.15;
+
         double baseForm = hasForm ? 0.25 : 0.0;
-        double baseElo = 1.0 - baseGlm - baseForm;
 
-        if (stage == null) return new double[]{baseElo, baseForm, baseGlm};
+        // Ajuste por confianza de forma: más partidos → más fiable
+        double formBoost = hasForm ? Math.min(0.10, formConfidence * 0.05) : 0.0;
 
-        return switch (stage) {
-            case GRUPOS -> {
-                double wGlm  = Math.min(0.40, baseGlm + 0.05);
-                double wForm = baseForm;
-                double wElo  = 1.0 - wGlm - wForm;
-                yield new double[]{wElo, wForm, wGlm};
+        // Ajuste por diferencia Elo: favorito claro → Elo más fiable
+        double eloBoost = Math.min(0.15, Math.abs(eloDiff) / 2000.0 * 0.15);
+
+        // Ajuste por H2H: muchos enfrentamientos → pequeña corrección
+        double h2hBoost = Math.min(0.05, h2hConfidence * 0.02);
+
+        // Ajuste por etapa del torneo
+        double stageFormBonus = 0, stageEloBonus = 0, stageGlmBonus = 0;
+        if (stage != null) {
+            switch (stage) {
+                case GRUPOS -> stageGlmBonus = 0.05;
+                case DIECISEISAVOS, OCTAVOS -> stageEloBonus = 0.10;
+                case CUARTOS, SEMIFINAL -> stageEloBonus = 0.15;
+                case FINAL -> { stageFormBonus = 0.10; stageEloBonus = 0.05; }
             }
-            case DIECISEISAVOS, OCTAVOS -> {
-                double wElo  = Math.min(0.55, baseElo + 0.05);
-                double wForm = baseForm;
-                double wGlm  = 1.0 - wElo - wForm;
-                yield new double[]{wElo, wForm, wGlm};
-            }
-            case CUARTOS, SEMIFINAL -> {
-                double wElo  = Math.min(0.60, baseElo + 0.10);
-                double wForm = baseForm;
-                double wGlm  = 1.0 - wElo - wForm;
-                yield new double[]{wElo, wForm, wGlm};
-            }
-            case FINAL -> {
-                double wForm = Math.min(0.35, baseForm + 0.10);
-                double wElo  = Math.min(0.55, baseElo - 0.05);
-                double wGlm  = 1.0 - wElo - wForm;
-                yield new double[]{wElo, wForm, wGlm};
-            }
-        };
+        }
+
+        // Calcular pesos con ajustes
+        double wGlm  = clampWeight(baseGlm + stageGlmBonus, 0.05, 0.50);
+        double wForm = clampWeight(baseForm + formBoost + stageFormBonus, 0.0, 0.40);
+        double wElo  = clampWeight(1.0 - wGlm - wForm + eloBoost + h2hBoost, 0.10, 0.80);
+
+        // Re-normalizar a suma 1.0
+        double total = wElo + wForm + wGlm;
+        return new double[]{wElo / total, wForm / total, wGlm / total};
+    }
+
+    /** Versión simplificada para backward compatibility (tests existentes). */
+    public static double[] stageWeights(Stage stage, int glmMatches, boolean hasForm) {
+        return stageWeights(stage, glmMatches, hasForm, 0, 0, 0);
+    }
+
+    private static double clampWeight(double v, double min, double max) {
+        return Math.max(min, Math.min(max, v));
     }
 
     // ── PMF ───────────────────────────────────────────────────────────────────
@@ -183,7 +242,7 @@ public final class PoissonPredictor {
 
     /**
      * Matriz triple-blend para predicciones del torneo.
-     * Usa DC_RHO_TOURNAMENT (-0.09) y ajuste por xG real.
+     * Usa rhoForStage(stage) y ajuste por xG real.
      */
     public static double[][] scoreMatrixTournament(String homeTeam, EloRating home,
                                                    String awayTeam,  EloRating away,
@@ -198,7 +257,7 @@ public final class PoissonPredictor {
                                                    String awayTeam,  EloRating away,
                                                    double homeBonus, Stage stage) {
         double[] lambdas = expectedGoalsBlended(homeTeam, home, awayTeam, away, homeBonus, stage);
-        return buildMatrix(lambdas[0], lambdas[1], DC_RHO_TOURNAMENT);
+        return buildMatrix(lambdas[0], lambdas[1], rhoForStage(stage));
     }
 
     /**
@@ -230,20 +289,21 @@ public final class PoissonPredictor {
             hasMarket = false;
         }
 
+        double rho = rhoForStage(stage);
         if (!hasMarket) {
-            return buildMatrix(lambdas[0], lambdas[1], DC_RHO_TOURNAMENT);
+            return buildMatrix(lambdas[0], lambdas[1], rho);
         }
 
         // 4. Buscar λ ajustados que produzcan las probabilidades blend
         double[] adjusted = findLambdasToMatchProbs(
                 blended[0], blended[1], blended[2],
-                lambdas[0], lambdas[1], DC_RHO_TOURNAMENT);
+                lambdas[0], lambdas[1], rho);
 
         System.out.printf("  📈 [Mercado] %s vs %s — λ: %.3f→%.3f , %.3f→%.3f%n",
                 homeTeam, awayTeam,
                 lambdas[0], adjusted[0], lambdas[1], adjusted[1]);
 
-        return buildMatrix(adjusted[0], adjusted[1], DC_RHO_TOURNAMENT);
+        return buildMatrix(adjusted[0], adjusted[1], rho);
     }
 
     /**
@@ -357,6 +417,15 @@ public final class PoissonPredictor {
         return new MatchProbabilities(win, draw, loss);
     }
 
+    /**
+     * Dixon-Coles τ correction. Solo modifica 4 marcadores de score bajo
+     * (0-0, 0-1, 1-0, 1-1) porque la correlación ρ entre goles local/visitante
+     * solo es relevante en partidos de pocos goles. Para scores ≥2, la
+     * independencia Poisson es una aproximación adecuada.
+     *
+     * Referencia: Dixon & Coles (1997), "Modelling Association Football Scores
+     * and Inefficiencies in the Football Betting Market", Appl. Statist. 46(2).
+     */
     private static double dcTau(int h, int a, double lH, double lA, double rho) {
         if (h == 0 && a == 0) return 1 - lH * lA * rho;
         if (h == 0 && a == 1) return 1 + lH * rho;

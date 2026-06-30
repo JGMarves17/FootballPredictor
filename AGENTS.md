@@ -1,6 +1,6 @@
 # FootballPredictor — Proyecto Vivo
 > Documento de arranque de sesión. Pegar completo al iniciar cada conversación y actualizar SOLO "Contexto dinámico".
-> Última actualización: 24-jun-2026. **DASHBOARD COMPLETO en `main`** (`4337e23`). 98 tests verdes. FlatLaf + Matriz 500k + Consola integrada + Pipeline desde botón.
+> Última actualización: 29-jun-2026. **Dashboard JavaFX completo** (`1ca7994`). 5 pestañas. Motor con H2H + Descanso + ρ por fase. Tabla de Puntos editable.
 
 ---
 ## 🧭 CONTEXTO DINÁMICO — ACTUALIZAR CADA SESIÓN
@@ -8,38 +8,40 @@
 |---|---|
 | Fecha actual | [PEGAR FECHA] |
 | Máquina | [CASA: `C:\Users\Administrator\IdeaProjects\FootballPredictor` / OFICINA: `C:\Users\JoseGabrielMarves\Documents\Universidad - JGMF\Proyectos - JAVA\FootballPredictor`] |
-| Fase del Mundial | Jornada 3 de grupos en curso (24-jun). Eliminatorias (R32) arrancan 28-jun. |
+| Fase del Mundial | **Eliminatorias R32 completadas. R16 (Octavos) próximo.** |
 | Branch activo | `main` |
+| Último commit | `1ca7994` |
 | ¿Hice git pull? | [SÍ/NO — SIEMPRE al abrir, sobre todo al cambiar de máquina] |
 
 ⚠️ **Regla de oro:** enviar predicciones por WhatsApp ANTES del primer partido. No enviar = −3 pts + 10L/partido.
-⚠️ **TRABAJO EN 2 MÁQUINAS:** SIEMPRE `git pull` al abrir y `git push` al cerrar. La oficina y la casa comparten el mismo repo.
-⏰ **RECORDATORIO PENDIENTE:** activar la API key de The Odds (`a1d46a53187e24d4f564000bb9319181`) en EnsemblePredictor cuando esté lista.
+⚠️ **TRABAJO EN 2 MÁQUINAS:** SIEMPRE `git pull` al abrir y `git push` al cerrar.
+⚠️ **RestDaysFactor.initialize()** YA conectado en MainWindow.loadFixture(). No olvidar en tests.
+⚠️ **DC_RHO por fase:** ρ = -0.15 (grupos), ρ = -0.09 (eliminatorias). Se resuelve automáticamente vía `rhoForStage()`.
 
 ---
-## 🏆 CLASIFICACIÓN REAL (24-jun, jornada 3 parcial)
+## 🏆 CLASIFICACIÓN REAL (29-jun, R32 completado)
 | Pos | Jugador | Pts |
-|---|---|---|
-| 1 | Rodrigo Lopez | 38 |
-| 2 | Jason Avila | 36 |
-| 3 | Ruben Figueroa | 33 |
-| 4 | Nissy Rodriguez | 31 |
-| 5 | Daniel Ortiz | 31 |
-| 6 | Cristhian Brito | 28 |
-| 7 | Carlos Guevara | 28 |
-| 8 | Hector Cerrato | 27 |
-| 9 | Alfredo Funez | 27 |
-| 10 | Jose Pozadas | 27 |
-| 11 | Carlos Davis | 26 |
-| 12 | Daniel Rivera | 25 |
-| 13 | Moises Chavarria | 25 |
-| 14 | Luis Flores | 24 |
-| 15 | Manuel Molina | 24 |
-| 16 | Jorge Brand | 22 |
-| **17** | **Gabriel Marves (YO)** | **19** |
+|-----|---------|:---:|
+| 1 | Ruben Figueroa | 73 |
+| 2 | Cristhian Brito | 72 |
+| 3 | Moises Chavarria | 72 |
+| 4 | Daniel Ortiz | 69 |
+| 5 | Hector Cerrato | 68 |
+| 6 | Rodrigo Lopez | 67 |
+| 7 | Jorge Brand | 65 |
+| 8 | Jose Pozadas | 65 |
+| 9 | Nissy Rodriguez | 64 |
+| 10 | Jason Avila | 63 |
+| 11 | Luis Flores | 59 |
+| **12** | **Gabriel Marves** | **59** |
+| 13 | Alfredo Funez | 58 |
+| 14 | Manuel Molina | 57 |
+| 15 | Carlos Davis | 56 |
+| 16 | Daniel Rivera | 43 |
+| 17 | Carlos Guevara | 0 |
 
-⚠️ Voy ÚLTIMO con 19 pts. PERO: torneo a <50% jugado. Eliminatorias (28-jun→19-jul) tienen 32 partidos sin jugar con puntos x2-x4 (R32 4pts exacto, ... Final 8pts). REMONTABLE.
-**Análisis honesto:** el sistema acierta ~58% resultado (lo prometido), pero el grueso de jornadas se jugó sin enviar predicciones del sistema (peleando con builds). El problema fue operativo, no del modelo. Estrategia clave para remontar: ARRIESGAR EXACTOS en partidos FIJO/FUERTE (el exacto vale x3 y es desempate #1).
+📈 **Remontada:** de 19 pts (P17) a 59 pts (P12). Estrategia actual: **optimize()** (maximiza EV de premio 60/30/10 — óptimo para posición media-alta).
+⚡ Diferencia con podio: ~9 pts. 100% remontable con aciertos en eliminatorias (puntos x2-x4).
 
 ---
 ## 🎯 REGLAS QUINIELA
@@ -60,44 +62,53 @@
 - Push/merge SIEMPRE manual por el usuario (el entorno Claude no tiene credenciales).
 
 ---
-## 🚀 MOTOR V2 — TRIPLE BLEND (en `main`)
+## 🚀 MOTOR — TRIPLE BLEND (en `main`)
 ```
 λ_final = 40% Elo + 25% FIFAForm + 35% GLM  (pesos dinámicos: GLM 15→25→35% según nº partidos)
         → ajustado por TournamentConditioner (xG real WC2026)
-        → Dixon-Coles ρ = -0.09 (torneo)
+        → Dixon-Coles ρ por fase (-0.15 grupos, -0.09 eliminatorias)
+        → HeadToHeadFactor (historial enfrentamientos directos)
+        → RestDaysFactor (diferencia de descanso entre equipos)
 con odds: EnsemblePredictor α=0.15 (85% mercado)
 ```
 ### Clases del motor (`prediction/`)
 - **FIFAFormCalculator** — últimos 50 partidos × importancia FIFA × decaimiento e^(-0.003×días) × calidad rival. `getForm()→FormResult`. BASELINE_GOALS=1.35.
-- **TournamentConditioner** — singleton `getInstance()`. **Lee `data/xg_wc2026.json`** (46 partidos j1-j3 cargados). `attackAdjustment/defenseAdjustment/adjustLambdas/addMatch`. PRIOR=3.0. España atk~0.69, Alemania~1.4.
+- **TournamentConditioner** — singleton `getInstance()`. **Lee `data/xg_wc2026.json`** (46 partidos j1-j3 cargados). `attackAdjustment/defenseAdjustment/adjustLambdas/addMatch`. PRIOR=1.5 (mayor peso al xG del torneo).
 - **TournamentGLM** — Poisson GLM ataque/defensa, Commons Math PowellOptimizer, ridge a prior Elo. `fit()→TournamentGLM`, `lambdaHome/lambdaAway`. REG_LAMBDA=2.0.
 - **ScoreMatrix** — record, 500k MC. `compute(homeTeam,home,awayTeam,away,bonus,seed[,n])`, `print()`, `topN()`, `mostLikelyScore()`, `probability(h,a)`. DEFAULT_SIMS=500_000.
 - **MatchdayEngine** — `preMatchday()` 500k+JSON, `postMatchday()`. Imports: model.Score + poisson.PoissonPredictor.
 - **LiveMatchUpdater** — `matchPlayed(home,away,hg,ag,xgH,xgA,homeAdv)` actualiza xG+Elo+recalibra GLM. `matchesRecorded()`.
-- **PoissonPredictor** (poisson/) — `expectedGoalsElo()`, `expectedGoalsBlended()→double[]`, `scoreMatrix()` (solo-Elo, backtest), `scoreMatrixTournament()`, `matchProbabilitiesTournament()`, `setGLM()`. Alias `expectedGoals()` @Deprecated→warnings normales. DC_RHO=-0.13, DC_RHO_TOURNAMENT=-0.09.
+- **PoissonPredictor** (poisson/) — `expectedGoalsElo()`, `expectedGoalsBlended()→double[]`, `scoreMatrix()`, `scoreMatrixTournament()`, `matchProbabilitiesTournament()`, `setGLM()`. `rhoForStage()` = -0.15 grupos, -0.09 eliminatorias. Pesos dinámicos según diferencia Elo, confianza forma, y confianza H2H.
 - **EnsemblePredictor** — α=0.15 con odds.
+- **HeadToHeadFactor** (NUEVO) — Lee `data/results.json`. Calcula factor multiplicativo para λ según historial de enfrentamientos directos. Smoothing progresivo, time decay.
+- **RestDaysFactor** (NUEVO) — Factor ±12% según diferencia de días de descanso entre equipos. 3% por día. Inicializado en MainWindow.loadFixture().
 
 ### Quiniela (`quiniela/`)
-- **MatchEV** — `rank/best/honest/top3MC/risk/bestResult` + **`dualPick(homeTeam,home,awayTeam,away,bonus)→DualPick`** (usa matriz de TORNEO: seguro=resultado más probable, exacto=marcador pico real). Risk: FIJO≥65% FUERTE≥55% DOBLE≥45% TRIPLE<45%.
-- **QuinielaRunnerV2** — lógica en **`run()` público** (main solo lo llama). Pipeline: fixture→GLM (24 partidos j1)→LiveMatchUpdater→standings reales→16 rivales→preMatchday 500k→MetaSimulator P(podio)→StrategyOptimizer. Secciones a editar cada jornada: standings, matchday, nº jornada, resultados con updater.matchPlayed().
-- StrategyOptimizer, QuinielaScorer, QuinielaRanking, StageDetector, JornadaOptimizer (sin cambios relevantes).
+- **MatchEV** — `rank/best/honest/top3MC/risk/bestResult` + **`dualPick(homeTeam,home,awayTeam,away,bonus)→DualPick`** (usa matriz de TORNEO: seguro=resultado más probable, exacto=marcador pico real). Risk: FIJO≥65% FUERTE≥55% DOBLE≥45% TRIPLE<45%. **`dualPickWithMarket()`** integra odds de mercado.
+- **QuinielaRunnerV2** — Pipeline: fixture→GLM→LiveMatchUpdater→standings reales→16 rivales→preMatchday 500k→MetaSimulator P(podio)→StrategyOptimizer. Estrategia: `optimize()` (EV premio 60/30/10).
+- **QuinielaRunnerR32** — Runner específico para R32 con `optimize()` (cambiado desde ALL-IN).
+- StrategyOptimizer, QuinielaScorer, QuinielaRanking, StageDetector, JornadaOptimizer.
 
-### UI (`ui/`) — DASHBOARD COMPLETO
-- **MainWindow** — FlatDarkLaf (`FlatDarkLaf.setup()` en main). 4 pestañas:
-    1. 🌍 Grupos & Bracket (BracketPanel)
-    2. 📋 Todos los partidos — tabla con búsqueda, orden, columnas: Local/Visitante/Fecha/Grupo/Resultado/**Seguro**/**Exacto arriesgado**/**Riesgo** (usa MatchEV.dualPick, motor de torneo)
-    3. 🎯 Matriz 500k — lista de partidos + mapa de calor (HeatmapView). 500k en background, cacheadas. Título HTML con colores (blanco/cyan/dorado). Salta placeholders (equipos con dígitos).
-    4. 🖥️ Consola del Sistema — JTextArea que captura System.out/err redirigidos. Todo el output va aquí, NADA al CMD.
-- Botones abajo: **▶ Correr Pipeline Completo** (llama QuinielaRunnerV2.run() en SwingWorker, salta a pestaña Consola, muestra TODO: matrices+WhatsApp+P(podio)) · ⚡ Generar Predicciones (llena columnas de la tabla).
-- **BracketPanel** — grupos 4×3 + bracket R32. (Pendiente: mejorar cuando R32 tenga equipos reales el 28-jun.)
+### UI (`ui/`) — DASHBOARD COMPLETO (JavaFX)
+- **MainWindow** — `BorderPane` con JavaFX. 5 pestañas:
+    1. 🌍 Grupos & Bracket (BracketView — scroll horizontal AS_NEEDED, minWidth 1650, auto-refresh 6h)
+    2. 📋 Todos los partidos — TableView con búsqueda, 8 columnas: Local/Visitante/Fecha/Grupo/Resultado/**Seguro**/**Exacto arriesgado**/**Riesgo** (usa MatchEV.dualPickWithMarket)
+    3. 🎯 Matriz 500k — ListView + HeatmapView (6×6 canvas). 500k MC en background, cacheadas.
+    4. 📱 WhatsApp Preview — TextArea con mensaje formateado (mercado + recomendaciones + P(exacto≥8%))
+    5. 🏆 Tabla de Puntos — StandingsPane editable con JSON persistente, 6 columnas, highlight fila propia
+- **AppTheme** — 5 temas seleccionables: Verde Cancha, Noche Azul, Rey Púrpura, Fuego, Carbón. Todos los colores son métodos dinámicos.
+- Botones abajo: ▶ Correr Pipeline · ⚡ Generar Predicciones · 📱 Enviar a WhatsApp.
+- **BracketView** — Grupos 4×3 + bracket R32→R16→QF→SF→FINAL con datos en vivo. Auto-refresh cada 6h desde openfootball API.
+- **StandingsPane** — NUEVO: tabla de posiciones editable, guarda/lee JSON, resalta "Gabriel Marves" en dorado.
 
-### Otras clases creadas por LLM paralelo (en main, NO tocadas a fondo)
-MarketComparator, WhatsAppMessenger, LiveResultFetcher, PipelineRunner, ProbabilityCalibrator, HyperparameterOptimizer, FormDecay. (Revisar/integrar en próxima sesión si se necesitan.)
+### Otras clases
+MarketComparator, WhatsAppMessenger, LiveResultFetcher, PipelineRunner, ProbabilityCalibrator, HyperparameterOptimizer, FormDecay, HeadToHeadFactor, RestDaysFactor.
 
 ---
 ## ✅ DATOS
 - **`data/xg_wc2026.json`** — formato `[home, away, homeXG, awayXG, homeGoals, awayGoals]`. 46 partidos: j1 (xG real), j2-j3 (marcadores REALES + xG PROXY estimado del marcador). ⚠️ REEMPLAZAR xG proxy de j2-j3 con RealGM real cuando se tenga.
-- Resultados reales cargados: ver json. j3 parcial: Portugal 5-0 Uzbekistan, England 0-0 Ghana, Panama 0-1 Croatia, Colombia 1-0 DR Congo.
+- `data/results.json` — 310KB de partidos históricos. Usado por FIFAFormCalculator y HeadToHeadFactor.
+- `data/quiniela_standings.json` — NUEVO: tabla de posiciones persistente con 17 jugadores. Editabla desde UI.
 
 ---
 ## 🔜 PENDIENTES (orden de prioridad)
