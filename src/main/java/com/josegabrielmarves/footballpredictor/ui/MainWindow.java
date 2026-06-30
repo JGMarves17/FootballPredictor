@@ -254,13 +254,15 @@ public class MainWindow extends BorderPane {
             // Inicializar factor de descanso con partidos ya jugados
             RestDaysFactor.initialize(loadedMatches);
 
-            // Filtrar solo partidos NO jugados (sin marcador)
+            // Filtrar solo partidos NO jugados (sin marcador) para la tabla
             List<Match> upcoming = loadedMatches.stream()
                     .filter(m -> m.score == null)
                     .toList();
 
             populateTable(upcoming);
-            bracketView.setMatches(upcoming, buildRatings());
+            // El bracket necesita TODOS los partidos (jugados + pendientes)
+            // para calcular posiciones de grupo y cruces
+            bracketView.setMatches(loadedMatches, buildRatings());
             matrixPane.setData(upcoming, buildRatings());
             btnPredict.setDisable(false);
 
