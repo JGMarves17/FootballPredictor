@@ -273,11 +273,11 @@ public final class QuinielaRunnerR32 {
                 remaining, ratings, ourPredictions, standings, rivals, 10_000, 2026L);
         meta.print();
 
-        // ── 9. StrategyOptimizer (ALL-IN) ──────────────────────────────────────
+        // ── 9. FastStrategyOptimizer (ALL-IN) ──────────────────────────────────
         System.out.println("\n[🎯] Optimizando estrategia ALL-IN (max P(1°))...");
-        List<StrategyOptimizer.StrategyMatch> strategyMatches = new ArrayList<>();
+        List<FastStrategyOptimizer.StrategyMatch> strategyMatches = new ArrayList<>();
         for (MatchdayEngine.MatchInput m : matchday) {
-            strategyMatches.add(new StrategyOptimizer.StrategyMatch(
+            strategyMatches.add(new FastStrategyOptimizer.StrategyMatch(
                     m.team1(),
                     ratings.getOrDefault(m.team1(), EloRating.initial(m.team1())),
                     m.team2(),
@@ -286,10 +286,16 @@ public final class QuinielaRunnerR32 {
             ));
         }
 
+        // Análisis de thresholds (rápido, solo simula rivales)
+        System.out.println("\n[📊] Analizando thresholds...");
+        FastStrategyOptimizer.ThresholdReport tr = FastStrategyOptimizer.analyzeThresholds(
+                strategyMatches, standings, rivals, STAGE, 10_000, 2026L);
+        tr.print(standings.getOrDefault(StandingsSimulator.US, 0));
+
         long t0 = System.currentTimeMillis();
-        // Balanceada: maximiza EV de premio (60/30/10) — óptimo para posición media
-        StrategyOptimizer.OptimizationResult opt = StrategyOptimizer.optimize(
-                strategyMatches, standings, rivals, STAGE, 3, 5_000, 2026L);
+        FastStrategyOptimizer.OptimizationResult opt = FastStrategyOptimizer.optimize(
+                strategyMatches, standings, rivals, STAGE, 3, 5_000, 2026L,
+                FastStrategyOptimizer.Objective.P1_FIRST);
         System.out.printf("[✓] Listo en %.1fs%n", (System.currentTimeMillis()-t0)/1000.0);
 
         // ── 10. IMPRIMIR RESULTADOS ────────────────────────────────────────────
@@ -301,7 +307,7 @@ public final class QuinielaRunnerR32 {
             ╔══════════════════════════════════════════════════════════╗
             ║  🏆  PREDICCIONES %s  ║
             ║  📌  Puntos: %d resultado · %d exacto · −10L fallo      ║
-            ║  🎯  Estrategia: ALL-IN (max P(1°))                      ║
+            ║  🎯  Estrategia: P1_FIRST (FastStrategyOptimizer)        ║
             ╠══════════════════════════════════════════════════════════╣
             ║  P(podio torneo completo) = %.1f%%                       ║
             ║  Posición esperada        = %.2f / %d                    ║
@@ -314,7 +320,9 @@ public final class QuinielaRunnerR32 {
 
         // ── 11. WHATSAPP ──────────────────────────────────────────────────────
         System.out.println("\n[📱] Generando mensaje para WhatsApp...");
-        String waMsg = buildWhatsAppMessage(JORNADA, matchday, opt, strategyMatches);
+        String waMsg = WhatsAppMessageBuilder.build(
+                STAGE_NAME, PTS_RESULT, PTS_EXACT,
+                matchday, strategyMatches, opt);
         // AUTO: intenta CallMeBot API, si falla → portapapeles
         WhatsAppMessenger.sendWithBot(waMsg);
 
@@ -371,86 +379,4 @@ public final class QuinielaRunnerR32 {
         return result;
     }
 
-    /**
-     * Construye mensaje optimizado para WhatsApp con TOP 3 marcadores de cada partido.
-     * Siempre incluye: probabilidades 1X2 del torneo, top 3 marcadores con pico,
-     * riesgo, y el pick recomendado (seguro/exacto).
-     */
-    private static String buildWhatsAppMessage(
-            int jornada,
-            List<MatchdayEngine.MatchInput> matchday,
-            StrategyOptimizer.OptimizationResult opt,
-            List<StrategyOptimizer.StrategyMatch> strategyMatches) {
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("⚽ *PREDICCIONES ").append(STAGE_NAME).append("*\n");
-        sb.append("📅 ").append(java.time.LocalDate.now()).append("\n");
-        sb.append("👤 Gabriel Marves\n");
-        sb.append("📊 P(podio)=").append(String.format("%.1f%%", opt.pPodio()*100));
-        sb.append(" · P(1°)=").append(String.format("%.1f%%", opt.p1st()*100));
-        sb.append(" · Esp.").append(String.format("%.2f", opt.expectedPosition()));
-        sb.append("/").append(opt.participants()).append("\n");
-        sb.append("💡 Pts: ").append(PTS_RESULT).append("R / ").append(PTS_EXACT).append("E · −10L fallo\n");
-        sb.append(" ".repeat(30)).append("\n");
-
-        for (int i = 0; i < matchday.size(); i++) {
-            MatchdayEngine.MatchInput m = matchday.get(i);
-            StrategyOptimizer.StrategyMatch sm = strategyMatches.get(i);
-            Score p = opt.predictions().get(i);
-            MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), MatchdayEngine.hostBonus(m.team1()));
-
-            // Probabilidades 1X2 del torneo (Triple Blend + xG)
-            double bonus = MatchdayEngine.hostBonus(m.team1());
-            var probs = PoissonPredictor.matchProbabilitiesTournament(
-                    sm.homeTeam(), sm.home(), sm.awayTeam(), sm.away(), bonus, m.stage());
-
-            // Top 3 marcadores desde la matriz del torneo
-            double[][] matrix = PoissonPredictor.scoreMatrixTournament(
-                    sm.homeTeam(), sm.home(), sm.awayTeam(), sm.away(), bonus, m.stage());
-            // Extraer top 3 como [score, prob] ordenados descendente
-            var topScores = new ArrayList<double[]>();
-            for (int h = 0; h <= PoissonPredictor.MAX_GOALS; h++) {
-                for (int a = 0; a <= PoissonPredictor.MAX_GOALS; a++) {
-                    if (matrix[h][a] > 0.005) { // mínimo 0.5%
-                        topScores.add(new double[]{h, a, matrix[h][a]});
-                    }
-                }
-            }
-            topScores.sort((a, b) -> Double.compare(b[2], a[2]));
-            int topCount = Math.min(3, topScores.size());
-
-            // Construir bloque del partido
-            String riesgoIcon = switch (riesgo) {
-                case FIJO    -> "🔒";
-                case FUERTE  -> "🔵";
-                case DOBLE   -> "🟡";
-                case TRIPLE  -> "⚡";
-                default      -> "▪️";
-            };
-
-            sb.append("🏟️ *").append(m.team1()).append("* vs *").append(m.team2()).append("*\n");
-            sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%",
-                    probs.homeWin()*100, probs.draw()*100, probs.awayWin()*100)).append("\n");
-
-            // Top 3 marcadores
-            for (int t = 0; t < topCount; t++) {
-                double[] sc = topScores.get(t);
-                String medal = (t == 0) ? "🥇" : (t == 1) ? "🥈" : "🥉";
-                String isPick = (sc[0] == p.homeGoals() && sc[1] == p.awayGoals()) ? " ◀ PICK" : "";
-                sb.append(String.format("   %s %d-%d (%.1f%%)%s%n",
-                        medal, (int)sc[0], (int)sc[1], sc[2]*100, isPick));
-            }
-
-            sb.append("   🎯 *").append(p.homeGoals()).append("-").append(p.awayGoals()).append("*  (")
-                    .append(riesgoIcon).append(" ").append(riesgo.label).append(")\n");
-            sb.append("\n");
-        }
-
-        sb.append(" ".repeat(30)).append("\n");
-        sb.append("⚡ FootballPredictor — ALL-IN · Triple Blend + xG\n");
-        sb.append("🎯 Estrategia ALL-IN (máx P(1°))\n");
-        sb.append("📱 ").append(java.time.LocalDateTime.now()).append("\n");
-
-        return sb.toString();
-    }
 }

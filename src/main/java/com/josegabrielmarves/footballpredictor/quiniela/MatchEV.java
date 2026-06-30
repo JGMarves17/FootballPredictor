@@ -6,9 +6,12 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage;
 import com.josegabrielmarves.footballpredictor.simulation.montecarlo.MonteCarloSimulator;
+import com.josegabrielmarves.footballpredictor.util.MatrixUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
+
+import com.josegabrielmarves.footballpredictor.quiniela.FastStrategyOptimizer.Objective;
 
 /**
  * Evalúa todos los marcadores candidatos para un partido y devuelve
@@ -97,6 +100,33 @@ public final class MatchEV {
         return rank(home, away, homeBonus, stage).get(0);
     }
 
+    /**
+     * Ranking de candidatos ajustado según el objetivo estratégico.
+     * <p>
+     * Para P1_FIRST: devuelve más candidatos (alta varianza) para explorar
+     * opciones poco convencionales.
+     * Para EXPECTED_PAYOUT/PODIUM: devuelve los topK estándar (balanceados).
+     * Para P3_THIRD: devuelve los topK estándar (seguro).
+     *
+     * @param home     rating local
+     * @param away     rating visitante
+     * @param homeBonus ventaja local
+     * @param stage    fase del torneo
+     * @param objective objetivo estratégico
+     * @param topK     base de candidatos a considerar
+     */
+    public static List<Candidate> rankWithObjective(EloRating home, EloRating away,
+                                                     double homeBonus, Stage stage,
+                                                     Objective objective, int topK) {
+        List<Candidate> all = rank(home, away, homeBonus, stage);
+        int adjustedK = switch (objective) {
+            case P1_FIRST       -> Math.max(5, (int) Math.ceil(topK * 1.5));
+            case P2_SECOND      -> Math.max(4, (int) Math.ceil(topK * 1.2));
+            case P3_THIRD, PODIUM, EXPECTED_PAYOUT -> topK;
+        };
+        return all.stream().limit(adjustedK).collect(Collectors.toList());
+    }
+
     public static Score honest(EloRating home, EloRating away, double homeBonus) {
         return PoissonPredictor.mostLikelyScore(home, away, homeBonus);
     }
@@ -125,10 +155,10 @@ public final class MatchEV {
                         homeTeam, home, awayTeam, away, homeBonus);
 
         // Exacto: marcador con mayor probabilidad absoluta en toda la matriz
-        int eh = 0, ea = 0; double pExacto = -1;
-        for (int h = 0; h < m.length; h++)
-            for (int a = 0; a < m[h].length; a++)
-                if (m[h][a] > pExacto) { pExacto = m[h][a]; eh = h; ea = a; }
+        MatrixUtils.ScoredCell exact = MatrixUtils.findMax(m);
+        int eh = exact.row();
+        int ea = exact.col();
+        double pExacto = exact.value();
 
         // Resultado más probable (1, X, 2)
         char winner = probs.homeWin() >= probs.draw() && probs.homeWin() >= probs.awayWin() ? '1'
@@ -172,10 +202,10 @@ public final class MatchEV {
                         homeTeam, home, awayTeam, away, homeBonus, null, ep);
 
         // Exacto: marcador con mayor probabilidad absoluta
-        int eh = 0, ea = 0; double pExacto = -1;
-        for (int h = 0; h < m.length; h++)
-            for (int a = 0; a < m[h].length; a++)
-                if (m[h][a] > pExacto) { pExacto = m[h][a]; eh = h; ea = a; }
+        MatrixUtils.ScoredCell exact = MatrixUtils.findMax(m);
+        int eh = exact.row();
+        int ea = exact.col();
+        double pExacto = exact.value();
 
         // Resultado más probable
         char winner = probs.homeWin() >= probs.draw() && probs.homeWin() >= probs.awayWin() ? '1'
