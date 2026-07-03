@@ -252,6 +252,12 @@ public final class MatchEV {
                 .collect(Collectors.toList());
     }
 
+    public static Score secure(String homeTeam, EloRating home,
+                               String awayTeam, EloRating away,
+                               double homeBonus) {
+        return dualPick(homeTeam, home, awayTeam, away, homeBonus).seguro();
+    }
+
     public static Risk risk(EloRating home, EloRating away, double homeBonus) {
         PoissonPredictor.MatchProbabilities probs =
                 PoissonPredictor.matchProbabilities(home, away, homeBonus);
