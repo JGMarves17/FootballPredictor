@@ -241,11 +241,8 @@ public final class WhatsAppMessageBuilder {
             if (opt != null && i < opt.predictions().size()) {
                 pick = opt.predictions().get(i);
             } else {
-                // Fallback: usar dualPick con matriz de torneo
-                MatchEV.DualPick dp = MatchEV.dualPick(
-                        sm.homeTeam(), sm.home(), sm.awayTeam(), sm.away(), bonus);
-                // ALL-IN: elegir exacto (máximo riesgo, máximo reward)
-                pick = dp.exacto();
+                // Fallback: generar predicción segura usando MatchEV.secure (juega seguro)
+                pick = MatchEV.secure(sm.homeTeam(), sm.home(), sm.awayTeam(), sm.away(), bonus);
             }
 
             MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), bonus);
@@ -328,11 +325,8 @@ public final class WhatsAppMessageBuilder {
             if (opt != null && i < opt.predictions().size()) {
                 pick = opt.predictions().get(i);
             } else {
-                // Fallback: usar dualPick con matriz de torneo
-                MatchEV.DualPick dp = MatchEV.dualPick(
-                        sm.homeTeam(), sm.home(), sm.awayTeam(), sm.away(), bonus);
-                // ALL-IN: elegir exacto (máximo riesgo, máximo reward)
-                pick = dp.exacto();
+                // Fallback: generar predicción segura usando MatchEV.secure (juega seguro)
+                pick = MatchEV.secure(sm.homeTeam(), sm.home(), sm.awayTeam(), sm.away(), bonus);
             }
 
             MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), bonus);
