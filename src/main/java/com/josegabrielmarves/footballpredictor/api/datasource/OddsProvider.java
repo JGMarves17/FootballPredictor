@@ -6,14 +6,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -140,20 +136,13 @@ public final class OddsProvider {
     }
 
     private String fetchJson(String urlStr) throws Exception {
-        TrustManager[] trustAll = new TrustManager[]{
-                new X509TrustManager() {
-                    public X509Certificate[] getAcceptedIssuers() { return null; }
-                    public void checkClientTrusted(X509Certificate[] c, String a) {}
-                    public void checkServerTrusted(X509Certificate[] c, String a) {}
-                }
-        };
-        SSLContext sc = SSLContext.getInstance("SSL");
-        sc.init(null, trustAll, new java.security.SecureRandom());
-        HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-        HttpsURLConnection.setDefaultHostnameVerifier((h, s) -> true);
+        // ✅ ARREGLADO: Usar SSL por defecto del sistema (verifica certificados reales)
+        // Se eliminaron líneas inseguras que aceptaban CUALQUIER certificado SSL
+        // Esto previene Man-in-the-Middle (MITM) attacks
+        // El sistema ahora verifica correctamente los certificados con HttpsURLConnection
 
         var url  = URI.create(urlStr).toURL();
-        var conn = (HttpURLConnection) url.openConnection();
+        var conn = (HttpsURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
         conn.setConnectTimeout(5000);
         conn.setReadTimeout(5000);

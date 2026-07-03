@@ -7,10 +7,10 @@ package com.josegabrielmarves.footballpredictor.prediction;
  *   - Mexico City (Estadio Azteca):     ~2,250m
  *   - Guadalajara (Estadio Akron):      ~1,566m
  *   - Monterrey (Estadio BBVA):         ~540m
- *   - USA/Canadá (17 sedes restantes):  &lt;200m (sin efecto)
+ *   - USA/Canadá (17 sedes restantes):  <200m (sin efecto)
  *
  * ⚽ EFECTO DEMOSTRADO en la literatura FIFA:
- *   - A &gt;1,500m, el VO₂max se reduce ~8-12% en no aclimatados
+ *   - A >1,500m, el VO₂max se reduce ~8-12% en no aclimatados
  *   - El balón viaja ~5% más rápido (menos densidad del aire)
  *   - Los arqueros tienen menos tiempo de reacción (efecto "burbuja")
  *   - Los equipos locales aclimatados tienen una ventaja de ~0.35 goles
@@ -66,11 +66,11 @@ public final class AltitudeFactor {
      *
      *   Altitud     | Aclimatado  | Factor  | Efecto
      *   ------------|-------------|---------|--------------------
-     *   &lt;500m      | cualquiera  | 1.00    | Sin efecto
+     *   <500m       | cualquiera  | 1.00    | Sin efecto
      *   500-1500m   | sí          | 0.97    | -3% (mínimo)
      *   500-1500m   | no          | 0.93    | -7% (moderado)
-     *   &gt;1500m     | sí          | 0.94    | -6% (México en casa)
-     *   &gt;1500m     | no          | 0.85    | -15% (significativo)
+     *   >1500m      | sí          | 0.94    | -6% (México en casa)
+     *   >1500m      | no          | 0.85    | -15% (significativo)
      *
      * @param altitude metros sobre el nivel del mar
      * @param acclimatized si el equipo está aclimatado
@@ -97,7 +97,7 @@ public final class AltitudeFactor {
      * @return array [λ₁_ajustado, λ₂_ajustado]
      */
     public static double[] adjustLambdas(double lambda1, double lambda2,
-                                          String team1, String team2) {
+                                         String team1, String team2) {
         double altitude = venueAltitude(team1, team2);
         if (altitude < MODERATE_THRESHOLD) {
             return new double[]{lambda1, lambda2};
@@ -109,10 +109,10 @@ public final class AltitudeFactor {
         double adj1 = lambda1 * factor1;
         double adj2 = lambda2 * factor2;
 
-        System.out.printf("  🏔️ [Altitud] %s: λ %.3f→%.3f (×%.2f) | %s: λ %.3f→%.3f (×%.2f) @ %.0fm%n",
-                team1, lambda1, adj1, factor1,
-                team2, lambda2, adj2, factor2,
-                altitude);
+        // COMENTADO PARA PRODUCCIÓN: System.out.printf("  🏔️ [Altitud] %s: λ %.3f→%.3f (×%.2f) | %s: λ %.3f→%.3f (×%.2f) @ %.0fm%n",
+        //         team1, lambda1, adj1, factor1,
+        //         team2, lambda2, adj2, factor2,
+        //         altitude);
 
         return new double[]{adj1, adj2};
     }

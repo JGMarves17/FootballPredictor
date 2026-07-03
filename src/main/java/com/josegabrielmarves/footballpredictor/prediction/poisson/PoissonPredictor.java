@@ -148,8 +148,8 @@ public final class PoissonPredictor {
             adjusted[0] *= h2h.homeAdvantage();
             adjusted[1] *= h2h.awayAdvantage();
             if (Math.abs(h2h.homeAdvantage() - 1.0) > 0.02) {
-                System.out.printf("  [H2H] %s vs %s — local: %.3f, visit: %.3f (%d partidos)%n",
-                        homeTeam, awayTeam, h2h.homeAdvantage(), h2h.awayAdvantage(), h2h.matchesPlayed());
+                // COMENTADO PARA PRODUCCIÓN: System.out.printf("  [H2H] %s vs %s — local: %.3f, visit: %.3f (%d partidos)%n",
+                //         homeTeam, awayTeam, h2h.homeAdvantage(), h2h.awayAdvantage(), h2h.matchesPlayed());
             }
         }
 
@@ -175,7 +175,7 @@ public final class PoissonPredictor {
      * - H2H aporta un pequeño boost cuando hay muchos enfrentamientos previos
      */
     public static double[] stageWeights(Stage stage, int glmMatches, boolean hasForm,
-                                         double eloDiff, double formConfidence, double h2hConfidence) {
+                                        double eloDiff, double formConfidence, double h2hConfidence) {
         double baseGlm;
         if (glmMatches >= 16) baseGlm = 0.35;
         else if (glmMatches >= 8) baseGlm = 0.25;
@@ -270,9 +270,9 @@ public final class PoissonPredictor {
      * Cuando no hay odds disponibles, devuelve la matriz estándar de torneo.
      */
     public static double[][] scoreMatrixTournamentWithMarket(String homeTeam, EloRating home,
-                                                              String awayTeam,  EloRating away,
-                                                              double homeBonus, Stage stage,
-                                                              EnsemblePredictor ep) {
+                                                             String awayTeam,  EloRating away,
+                                                             double homeBonus, Stage stage,
+                                                             EnsemblePredictor ep) {
         // 1. Obtener λ base del modelo (ya incluye altitud)
         double[] lambdas = expectedGoalsBlended(homeTeam, home, awayTeam, away, homeBonus, stage);
 
@@ -339,8 +339,8 @@ public final class PoissonPredictor {
                 var probs = aggregateProbs(buildMatrix(tH, tA, rho));
 
                 double dist = Math.abs(probs.homeWin() - targetP1)
-                            + Math.abs(probs.draw()   - targetPX)
-                            + Math.abs(probs.awayWin() - targetP2);
+                        + Math.abs(probs.draw()   - targetPX)
+                        + Math.abs(probs.awayWin() - targetP2);
 
                 if (dist < bestDist) {
                     bestDist = dist;
@@ -386,19 +386,21 @@ public final class PoissonPredictor {
     }
 
     public static MatchProbabilities matchProbabilitiesTournament(String homeTeam, EloRating home,
-                                                                    String awayTeam, EloRating away,
-                                                                    double homeBonus) {
+                                                                  String awayTeam, EloRating away,
+                                                                  double homeBonus) {
         return matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, null);
     }
 
     public static MatchProbabilities matchProbabilitiesTournament(String homeTeam, EloRating home,
-                                                                    String awayTeam, EloRating away,
-                                                                    double homeBonus, Stage stage) {
-        MatchProbabilities raw = aggregateProbs(scoreMatrixTournament(homeTeam, home, awayTeam, away, homeBonus, stage));
-        return applyCalibration(raw);
+                                                                  String awayTeam, EloRating away,
+                                                                  double homeBonus, Stage stage) {
+        return aggregateProbs(scoreMatrixTournament(homeTeam, home, awayTeam, away, homeBonus, stage));
     }
 
-    private static MatchProbabilities applyCalibration(MatchProbabilities raw) {
+    public static MatchProbabilities matchProbabilitiesCalibrated(
+            String homeTeam, EloRating home, String awayTeam, EloRating away,
+            double homeBonus, Stage stage) {
+        MatchProbabilities raw = matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, stage);
         if (calibrator == null) return raw;
         double[] cal = calibrator.calibratePlatt(raw.homeWin(), raw.draw(), raw.awayWin());
         return new MatchProbabilities(cal[0], cal[1], cal[2]);

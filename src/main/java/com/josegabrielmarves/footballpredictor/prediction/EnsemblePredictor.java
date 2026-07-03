@@ -70,15 +70,15 @@ public final class EnsemblePredictor {
      * @return array [pHomeWin, pDraw, pAwayWin]
      */
     public double[] probabilitiesTournament(String homeTeam, EloRating home,
-                                             String awayTeam, EloRating away,
-                                             double homeBonus) {
+                                            String awayTeam, EloRating away,
+                                            double homeBonus) {
         return probabilitiesImpl(homeTeam, home, awayTeam, away, homeBonus, true, null);
     }
 
     public double[] probabilitiesTournament(String homeTeam, EloRating home,
-                                             String awayTeam, EloRating away,
-                                             double homeBonus,
-                                             com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage stage) {
+                                            String awayTeam, EloRating away,
+                                            double homeBonus,
+                                            com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage stage) {
         return probabilitiesImpl(homeTeam, home, awayTeam, away, homeBonus, true, stage);
     }
 
@@ -86,9 +86,9 @@ public final class EnsemblePredictor {
      * Implementación unificada para ambos modos (simple y torneo).
      */
     private double[] probabilitiesImpl(String homeTeam, EloRating home,
-                                        String awayTeam, EloRating away,
-                                        double homeBonus, boolean tournament,
-                                        com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage stage) {
+                                       String awayTeam, EloRating away,
+                                       double homeBonus, boolean tournament,
+                                       com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage stage) {
         // Probabilidades del modelo
         PoissonPredictor.MatchProbabilities model = tournament
                 ? PoissonPredictor.matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, stage)
@@ -99,8 +99,8 @@ public final class EnsemblePredictor {
         double[] marketProbs = oddsProvider.getImpliedProbabilities(homeTeam, awayTeam);
 
         if (marketProbs == null) {
-            System.out.printf("[Ensemble] Sin odds para %s vs %s — usando solo modelo%n",
-                    homeTeam, awayTeam);
+            // COMENTADO PARA PRODUCCIÓN: System.out.printf("[Ensemble] Sin odds para %s vs %s — usando solo modelo%n",
+            //         homeTeam, awayTeam);
             return modelProbs;
         }
 
@@ -110,15 +110,15 @@ public final class EnsemblePredictor {
             ensemble[i] = alpha * modelProbs[i] + (1 - alpha) * marketProbs[i];
         }
 
-        System.out.printf("[Ensemble] %s vs %s%n" +
-                        "  Modelo:  1=%.1f%% X=%.1f%% 2=%.1f%%%n" +
-                        "  Mercado: 1=%.1f%% X=%.1f%% 2=%.1f%%%n" +
-                        "  Ensemble(α=%.1f): 1=%.1f%% X=%.1f%% 2=%.1f%%%n",
-                homeTeam, awayTeam,
-                modelProbs[0]*100,  modelProbs[1]*100,  modelProbs[2]*100,
-                marketProbs[0]*100, marketProbs[1]*100, marketProbs[2]*100,
-                alpha,
-                ensemble[0]*100, ensemble[1]*100, ensemble[2]*100);
+        // COMENTADO PARA PRODUCCIÓN: System.out.printf("[Ensemble] %s vs %s%n" +
+        //         "  Modelo:  1=%.1f%% X=%.1f%% 2=%.1f%%%n" +
+        //         "  Mercado: 1=%.1f%% X=%.1f%% 2=%.1f%%%n" +
+        //         "  Ensemble(α=%.1f): 1=%.1f%% X=%.1f%% 2=%.1f%%%n",
+        //         homeTeam, awayTeam,
+        //         modelProbs[0]*100,  modelProbs[1]*100,  modelProbs[2]*100,
+        //         marketProbs[0]*100, marketProbs[1]*100, marketProbs[2]*100,
+        //         alpha,
+        //         ensemble[0]*100, ensemble[1]*100, ensemble[2]*100);
 
         return ensemble;
     }
@@ -136,8 +136,8 @@ public final class EnsemblePredictor {
         }
         System.out.println("[EnsemblePredictor] API key activada desde " +
                 (args.length > 0 ? "argumento" :
-                 System.getenv("ODDS_API_KEY") != null ? "env ODDS_API_KEY" :
-                 "constante DEFAULT_API_KEY"));
+                        System.getenv("ODDS_API_KEY") != null ? "env ODDS_API_KEY" :
+                        "constante DEFAULT_API_KEY"));
 
         OddsProvider odds = new OddsProvider(apiKey);
         System.out.println("Obteniendo odds del Mundial 2026...");
