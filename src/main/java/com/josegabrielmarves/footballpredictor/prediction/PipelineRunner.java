@@ -29,6 +29,18 @@ public final class PipelineRunner {
         System.out.printf("  Accuracy: %.1f%%  Brier: %.4f  LogLoss: %.4f  RPS: %.4f  (%d partidos)%n",
                 honest.accuracy() * 100, honest.brier(), honest.logLoss(), honest.rps(), honest.matches());
 
+        // 1b. Entrenar ProbabilityCalibrator con Platt Scaling
+        System.out.println("\n[1b/7] Entrenando ProbabilityCalibrator (Platt)...");
+        try {
+            var plattConfig = com.josegabrielmarves.footballpredictor.prediction.backtest.BacktestPipeline.PipelineConfig.tripleBlendDefault();
+            ProbabilityCalibrator cal = ProbabilityCalibrator.trainFromBacktest(
+                    dataFile, 150, plattConfig);
+            com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor.setCalibrator(cal);
+            System.out.println("  Calibrator conectado al motor de predicción");
+        } catch (Exception e) {
+            System.out.println("  (calibración omitida: " + e.getMessage() + ")");
+        }
+
         // 2. Cargar fixture y ratings
         System.out.println("\n[2/7] Inicializando modelo...");
         var matches = new com.josegabrielmarves.footballpredictor.api.datasource.OpenFootballProvider()

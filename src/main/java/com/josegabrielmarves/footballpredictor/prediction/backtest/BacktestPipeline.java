@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.*;
+import com.josegabrielmarves.footballpredictor.prediction.backtest.BacktestMetrics.Outcome;
 
 public final class BacktestPipeline {
 
@@ -77,6 +78,13 @@ public final class BacktestPipeline {
 
     public static PipelineResult run(Path dataFile, int burnIn,
                                       boolean seedCalibrated, PipelineConfig config) {
+        return run(dataFile, burnIn, seedCalibrated, config, null, null);
+    }
+
+    public static PipelineResult run(Path dataFile, int burnIn,
+                                      boolean seedCalibrated, PipelineConfig config,
+                                      List<double[]> outPredictedProbs,
+                                      List<Outcome> outActualOutcomes) {
         List<HistoricalMatch> matches = load(dataFile);
         Map<String, Double> ratings = new HashMap<>();
         BacktestMetrics global = new BacktestMetrics();
@@ -105,6 +113,11 @@ public final class BacktestPipeline {
 
                 Outcome actual = Outcome.of(new Score(m.hg, m.ag));
                 global.add(probs, actual);
+
+                if (outPredictedProbs != null) {
+                    outPredictedProbs.add(new double[]{probs.homeWin(), probs.draw(), probs.awayWin()});
+                    outActualOutcomes.add(actual);
+                }
 
                 String stage = classifyStage(i, matches.size());
                 byStage.computeIfAbsent(stage, k -> new BacktestMetrics()).add(probs, actual);

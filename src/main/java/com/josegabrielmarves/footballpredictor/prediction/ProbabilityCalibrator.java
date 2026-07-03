@@ -120,21 +120,65 @@ public final class ProbabilityCalibrator {
 
     public static ProbabilityCalibrator trainFromBacktest(
             Path dataFile, int burnIn, BacktestPipeline.PipelineConfig config) {
-        var result = BacktestPipeline.run(dataFile, burnIn, false, config);
-        double homeAcc = result.metrics().accuracy();
-        double brier = result.metrics().brier();
-        double homeCf = Math.min(1.2, Math.max(0.8, homeAcc / 0.45));
-        return new ProbabilityCalibrator(homeCf, 1.0 / homeCf, 1.0);
+        List<double[]> predictedProbs = new ArrayList<>();
+        List<Outcome> actualOutcomes = new ArrayList<>();
+
+        var result = BacktestPipeline.run(dataFile, burnIn, false, config,
+                predictedProbs, actualOutcomes);
+
+        System.out.printf("[Calibrator] Backtest: %d partidos, acc=%.1f%%, Brier=%.4f%n",
+                result.metrics().matches(), result.metrics().accuracy() * 100,
+                result.metrics().brier());
+
+        if (predictedProbs.size() < 50) {
+            System.out.println("[Calibrator] Pocos datos, usando calibración simple");
+            double homeAcc = result.metrics().accuracy();
+            double homeCf = Math.min(1.2, Math.max(0.8, homeAcc / 0.45));
+            return new ProbabilityCalibrator(homeCf, 1.0 / homeCf, 1.0);
+        }
+
+        ProbabilityCalibrator cal = trainPlatt(predictedProbs, actualOutcomes);
+        System.out.printf("[Calibrator] Platt entrenado — aH=%.2f bH=%.2f aD=%.2f bD=%.2f aA=%.2f bA=%.2f%n",
+                cal.aHome, cal.bHome, cal.aDraw, cal.bDraw, cal.aAway, cal.bAway);
+
+        double brierBefore = evaluateBrier(predictedProbs, actualOutcomes, null);
+        double brierAfter = evaluateBrier(predictedProbs, actualOutcomes, cal);
+        System.out.printf("[Calibrator] Brier antes=%.4f  después=%.4f  mejora=%.4f%n",
+                brierBefore, brierAfter, brierBefore - brierAfter);
+
+        return cal;
+    }
+
+    private static double evaluateBrier(List<double[]> probs, List<Outcome> actuals,
+                                         ProbabilityCalibrator cal) {
+        double sum = 0;
+        for (int i = 0; i < probs.size(); i++) {
+            double[] p = probs.get(i);
+            double[] q = cal != null ? cal.calibratePlatt(p[0], p[1], p[2]) : p;
+            Outcome act = actuals.get(i);
+            double oH = act == Outcome.HOME_WIN ? 1.0 : 0.0;
+            double oD = act == Outcome.DRAW ? 1.0 : 0.0;
+            double oA = act == Outcome.AWAY_WIN ? 1.0 : 0.0;
+            sum += Math.pow(q[0] - oH, 2) + Math.pow(q[1] - oD, 2) + Math.pow(q[2] - oA, 2);
+        }
+        return sum / probs.size();
     }
 
     public static void main(String[] args) {
-        ProbabilityCalibrator cal = new ProbabilityCalibrator();
+        System.out.println("=== Entrenando ProbabilityCalibrator ===");
+        Path dataFile = Path.of("data/results.json");
+        var config = BacktestPipeline.PipelineConfig.tripleBlendDefault();
+        ProbabilityCalibrator cal = trainFromBacktest(dataFile, 150, config);
+
         PoissonPredictor.MatchProbabilities test =
                 new PoissonPredictor.MatchProbabilities(0.55, 0.25, 0.20);
-        PoissonPredictor.MatchProbabilities calib = cal.calibrate(test);
+        PoissonPredictor.MatchProbabilities simple = cal.calibrate(test);
+        double[] platt = cal.calibratePlatt(test.homeWin(), test.draw(), test.awayWin());
         System.out.printf("Original: %.1f%% / %.1f%% / %.1f%%%n",
                 test.homeWin() * 100, test.draw() * 100, test.awayWin() * 100);
-        System.out.printf("Calibrado: %.1f%% / %.1f%% / %.1f%%%n",
-                calib.homeWin() * 100, calib.draw() * 100, calib.awayWin() * 100);
+        System.out.printf("Simple:   %.1f%% / %.1f%% / %.1f%%%n",
+                simple.homeWin() * 100, simple.draw() * 100, simple.awayWin() * 100);
+        System.out.printf("Platt:    %.1f%% / %.1f%% / %.1f%%%n",
+                platt[0] * 100, platt[1] * 100, platt[2] * 100);
     }
 }

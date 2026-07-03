@@ -386,21 +386,19 @@ public final class PoissonPredictor {
     }
 
     public static MatchProbabilities matchProbabilitiesTournament(String homeTeam, EloRating home,
-                                                                   String awayTeam, EloRating away,
-                                                                   double homeBonus) {
+                                                                    String awayTeam, EloRating away,
+                                                                    double homeBonus) {
         return matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, null);
     }
 
     public static MatchProbabilities matchProbabilitiesTournament(String homeTeam, EloRating home,
                                                                     String awayTeam, EloRating away,
                                                                     double homeBonus, Stage stage) {
-        return aggregateProbs(scoreMatrixTournament(homeTeam, home, awayTeam, away, homeBonus, stage));
+        MatchProbabilities raw = aggregateProbs(scoreMatrixTournament(homeTeam, home, awayTeam, away, homeBonus, stage));
+        return applyCalibration(raw);
     }
 
-    public static MatchProbabilities matchProbabilitiesCalibrated(
-            String homeTeam, EloRating home, String awayTeam, EloRating away,
-            double homeBonus, Stage stage) {
-        MatchProbabilities raw = matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, stage);
+    private static MatchProbabilities applyCalibration(MatchProbabilities raw) {
         if (calibrator == null) return raw;
         double[] cal = calibrator.calibratePlatt(raw.homeWin(), raw.draw(), raw.awayWin());
         return new MatchProbabilities(cal[0], cal[1], cal[2]);
