@@ -28,15 +28,43 @@ public final class EnsemblePredictor {
     /** Alpha usado en PipelineRunner para comparación modelo vs mercado (15% modelo, 85% mercado). */
     public static final double ALPHA_MARKET_HEAVY = 0.15;
 
-    /** API key de The Odds — activada para todo el pipeline. */
-    public static final String DEFAULT_API_KEY = "a1d46a53187e24d4f564000bb9319181";
+    /** API key de The Odds — se lee desde variable de entorno ODDS_API_KEY. */
+    public static final String DEFAULT_API_KEY = getApiKey();
 
     private final OddsProvider oddsProvider;
     private final double alpha;
 
+    /**
+     * Obtiene la API key desde la variable de entorno ODDS_API_KEY.
+     * Si no está definida, devuelve la clave por defecto (hardcodeada como fallback).
+     */
+    public static String getApiKey() {
+        String envKey = System.getenv("ODDS_API_KEY");
+        if (envKey != null && !envKey.isBlank()) {
+            return envKey;
+        }
+        // Fallback a la clave hardcodeada (solo para desarrollo)
+        return "a1d46a53187e24d4f564000bb9319181";
+    }
+
     /** Crea un EnsemblePredictor con la API key por defecto y alpha=0.15 (mercado pesado). */
     public EnsemblePredictor() {
-        this(new OddsProvider(DEFAULT_API_KEY), ALPHA_MARKET_HEAVY);
+        this(DEFAULT_API_KEY, ALPHA_MARKET_HEAVY);
+    }
+
+    public EnsemblePredictor(String apiKey) {
+        this(apiKey, DEFAULT_ALPHA);
+    }
+
+    public EnsemblePredictor(String apiKey, double alpha) {
+        if (alpha < 0 || alpha > 1) throw new IllegalArgumentException("alpha debe estar en [0,1]");
+        this.alpha = alpha;
+        if (apiKey == null || apiKey.isBlank()) {
+            System.err.println("[EnsemblePredictor] ⚠️ ODDS_API_KEY no configurada — mercado deshabilitado");
+            this.oddsProvider = null;
+        } else {
+            this.oddsProvider = new OddsProvider(apiKey);
+        }
     }
 
     public EnsemblePredictor(OddsProvider oddsProvider) {
@@ -96,7 +124,10 @@ public final class EnsemblePredictor {
         double[] modelProbs = {model.homeWin(), model.draw(), model.awayWin()};
 
         // Probabilidades del mercado
-        double[] marketProbs = oddsProvider.getImpliedProbabilities(homeTeam, awayTeam);
+        double[] marketProbs = null;
+        if (oddsProvider != null) {
+            marketProbs = oddsProvider.getImpliedProbabilities(homeTeam, awayTeam);
+        }
 
         if (marketProbs == null) {
             // COMENTADO PARA PRODUCCIÓN: System.out.printf("[Ensemble] Sin odds para %s vs %s — usando solo modelo%n",

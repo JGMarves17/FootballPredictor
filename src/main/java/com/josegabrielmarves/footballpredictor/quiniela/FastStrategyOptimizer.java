@@ -161,11 +161,11 @@ public final class FastStrategyOptimizer {
                     m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage);
         }
 
-        // ── 2. Top-K candidatos por partido ─────────────────────────────────
+        // ── 2. Top-K candidatos por partido (modelo torneo: triple-blend + xG + GLM + H2H + Descanso) ──────────
         List<List<Score>> candidates = new ArrayList<>(M);
         for (int i = 0; i < M; i++) {
             StrategyMatch m = matches.get(i);
-            candidates.add(MatchEV.rank(m.home(), m.away(), m.homeBonus(), stage)
+            candidates.add(MatchEV.rankTournament(m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage)
                     .stream().limit(topK).map(MatchEV.Candidate::score).toList());
         }
         int K = candidates.stream().mapToInt(List::size).min().orElse(topK);

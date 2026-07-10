@@ -7,7 +7,6 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage;
 import com.josegabrielmarves.footballpredictor.rivals.RivalProfile;
-import com.josegabrielmarves.footballpredictor.rivals.RivalProfile.Type;
 import com.josegabrielmarves.footballpredictor.rivals.StandingsSimulator;
 
 import java.util.*;
@@ -70,42 +69,19 @@ public final class QuinielaRunner {
         standings.put("Carlos Davis",         2);
         standings.put("Jorge Brand",          0);
 
-        // ── 4. PERFILES DE RIVALES (editable) ─────────────────────────────────
-        // Mezcla razonable mientras no sepas cómo predicen de verdad:
-        //   FAVORITE     = "favoritista" (marcador modal del favorito)
-        //   CONSERVATIVE = "intermedio"  (marcadores bajos, 0-2 por lado)
-        //   RANDOM       = "arriesgado"  (marcadores variados)
-        // Cambia el Type de cada quien cuando tengas datos reales; los nombres
-        // DEBEN coincidir con los de la clasificación de arriba.
-        List<RivalProfile> rivals = List.of(
-                new RivalProfile("Cristhian Brito",  Type.FAVORITE),
-                new RivalProfile("Ruben Figueroa",   Type.CONSERVATIVE),
-                new RivalProfile("Rodrigo Lopez",    Type.FAVORITE),
-                new RivalProfile("Manuel Molina",    Type.CONSERVATIVE),
-                new RivalProfile("Nissy Rodriguez",  Type.RANDOM),
-                new RivalProfile("Daniel Rivera",    Type.FAVORITE),
-                new RivalProfile("Carlos Guevara",   Type.CONSERVATIVE),
-                new RivalProfile("Moises Chavarria", Type.RANDOM),
-                new RivalProfile("Jason Avila",      Type.FAVORITE),
-                new RivalProfile("Hector Cerrato",   Type.CONSERVATIVE),
-                new RivalProfile("Alfredo Funez",    Type.RANDOM),
-                new RivalProfile("Jose Pozadas",     Type.CONSERVATIVE),
-                new RivalProfile("Daniel Ortiz",     Type.RANDOM),
-                new RivalProfile("Luis Flores",      Type.FAVORITE),
-                new RivalProfile("Carlos Davis",     Type.CONSERVATIVE),
-                new RivalProfile("Jorge Brand",      Type.RANDOM)
-        );
+        // ── 4. PERFILES DE RIVALES (desde JSON, no hardcodeados) ──────────────────
+        List<RivalProfile> rivals = RivalLoader.load();
 
         // ── 5. PARTIDOS DE LA JORNADA (actualizar cada jornada) ───────────────
         // Cambiar por los partidos reales de la jornada a predecir
         // homeBonus: EloCalculator.HOME_ADVANTAGE si es México/USA/Canadá como local, 0 si neutral
-        List<StrategyOptimizer.StrategyMatch> matches = List.of(
-                new StrategyOptimizer.StrategyMatch(
+        List<FastStrategyOptimizer.StrategyMatch> matches = List.of(
+                new FastStrategyOptimizer.StrategyMatch(
                         "Mexico",    ratings.getOrDefault("Mexico",    EloRating.initial("Mexico")),
                         "South Africa", ratings.getOrDefault("South Africa", EloRating.initial("South Africa")),
                         EloCalculator.HOME_ADVANTAGE   // México es local
                 ),
-                new StrategyOptimizer.StrategyMatch(
+                new FastStrategyOptimizer.StrategyMatch(
                         "South Korea",   ratings.getOrDefault("South Korea",   EloRating.initial("South Korea")),
                         "Czech Republic",ratings.getOrDefault("Czech Republic",EloRating.initial("Czech Republic")),
                         0.0   // cancha neutral
@@ -116,21 +92,22 @@ public final class QuinielaRunner {
         // ── 6. Fase 8: reporte partido a partido ──────────────────────────────
         System.out.println("\n--- Reporte MatchEV (Fase 8) ---");
         JornadaOptimizer jornadaOpt = new JornadaOptimizer(Stage.GRUPOS);
-        for (StrategyOptimizer.StrategyMatch m : matches) {
+        for (FastStrategyOptimizer.StrategyMatch m : matches) {
             jornadaOpt.addMatch(m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus());
         }
         jornadaOpt.printReport();
 
         // ── 7. Fase 10: optimización de estrategia ────────────────────────────
-        System.out.println("--- Strategy Optimizer (Fase 10) ---");
+        System.out.println("--- FastStrategyOptimizer (Fase 10) ---");
         System.out.println("Evaluando combinaciones...");
         long t0 = System.currentTimeMillis();
 
-        StrategyOptimizer.OptimizationResult optimal = StrategyOptimizer.optimize(
+        FastStrategyOptimizer.OptimizationResult optimal = FastStrategyOptimizer.optimize(
                 matches, standings, rivals, Stage.GRUPOS,
                 3,      // top-K candidatos por partido
                 3_000,  // simulaciones por combinación
-                2026L   // semilla
+                2026L,  // semilla
+                FastStrategyOptimizer.Objective.EXPECTED_PAYOUT
         );
 
         System.out.printf("Completado en %.1fs%n", (System.currentTimeMillis()-t0)/1000.0);

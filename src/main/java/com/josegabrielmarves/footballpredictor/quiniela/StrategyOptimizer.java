@@ -148,7 +148,8 @@ public final class StrategyOptimizer {
         List<List<Score>> candidatesPerMatch = new ArrayList<>();
         for (int i = 0; i < matches.size(); i++) {
             StrategyMatch m = matches.get(i);
-            List<Score> cands = MatchEV.rank(m.home(), m.away(), m.homeBonus(), stage)
+            List<Score> cands = MatchEV.rankTournament(
+                    m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage)
                     .stream().limit(topK).map(MatchEV.Candidate::score).toList();
             candidatesPerMatch.add(cands);
         }

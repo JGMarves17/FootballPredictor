@@ -82,6 +82,26 @@ public final class MatchEV {
         double[][] matrix = PoissonPredictor.scoreMatrix(home, away, homeBonus);
         PoissonPredictor.MatchProbabilities probs =
                 PoissonPredictor.matchProbabilities(home, away, homeBonus);
+        return buildCandidates(matrix, probs, stage);
+    }
+
+    /**
+     * Ranking de candidatos usando el modelo de TORNEO (triple-blend + xG + GLM + H2H + Descanso + Altitud).
+     * Este es el modelo que usa el pipeline principal. StrategyOptimizer debe usar ESTE método,
+     * no {@link #rank(EloRating, EloRating, double, Stage)} que usa solo Elo.
+     */
+    public static List<Candidate> rankTournament(String homeTeam, EloRating home,
+                                                  String awayTeam, EloRating away,
+                                                  double homeBonus, Stage stage) {
+        double[][] matrix = PoissonPredictor.scoreMatrixTournament(homeTeam, home, awayTeam, away, homeBonus, stage);
+        PoissonPredictor.MatchProbabilities probs =
+                PoissonPredictor.matchProbabilitiesTournament(homeTeam, home, awayTeam, away, homeBonus, stage);
+        return buildCandidates(matrix, probs, stage);
+    }
+
+    private static List<Candidate> buildCandidates(double[][] matrix,
+                                                    PoissonPredictor.MatchProbabilities probs,
+                                                    Stage stage) {
         List<Candidate> candidates = new ArrayList<>();
         for (int h = 0; h <= MAX_GOALS; h++) {
             for (int a = 0; a <= MAX_GOALS; a++) {
@@ -194,12 +214,13 @@ public final class MatchEV {
     public static DualPick dualPickWithMarket(String homeTeam, EloRating home,
                                                String awayTeam, EloRating away,
                                                double homeBonus,
+                                               QuinielaScorer.Stage stage,
                                                EnsemblePredictor ep) {
         double[][] m = PoissonPredictor.scoreMatrixTournamentWithMarket(
-                homeTeam, home, awayTeam, away, homeBonus, null, ep);
+                homeTeam, home, awayTeam, away, homeBonus, stage, ep);
         PoissonPredictor.MatchProbabilities probs =
                 PoissonPredictor.matchProbabilitiesTournamentWithMarket(
-                        homeTeam, home, awayTeam, away, homeBonus, null, ep);
+                        homeTeam, home, awayTeam, away, homeBonus, stage, ep);
 
         // Exacto: marcador con mayor probabilidad absoluta
         MatrixUtils.ScoredCell exact = MatrixUtils.findMax(m);

@@ -144,7 +144,9 @@ public final class PoissonPredictor {
         adjusted = AltitudeFactor.adjustLambdas(adjusted[0], adjusted[1], homeTeam, awayTeam);
 
         // 7. Ajuste por Head-to-Head histórico (desde results.json)
-        if (h2h.matchesPlayed() >= 3) {
+        // Umbral bajado de 3 a 1: en Mundial la mayoría de pares tienen 0-2 partidos.
+        // HeadToHeadFactor ya aplica smooth fuerte (1 part=10%, 5+=100%) y clamp ±20%.
+        if (h2h.matchesPlayed() >= 1) {
             adjusted[0] *= h2h.homeAdvantage();
             adjusted[1] *= h2h.awayAdvantage();
             if (Math.abs(h2h.homeAdvantage() - 1.0) > 0.02) {
@@ -373,6 +375,20 @@ public final class PoissonPredictor {
 
     public static Score mostLikelyScore(EloRating home, EloRating away, double homeBonus) {
         double[][] m = scoreMatrix(home, away, homeBonus);
+        int bH = 0, bA = 0; double best = -1;
+        for (int h = 0; h <= MAX_GOALS; h++)
+            for (int a = 0; a <= MAX_GOALS; a++)
+                if (m[h][a] > best) { best = m[h][a]; bH = h; bA = a; }
+        return new Score(bH, bA);
+    }
+
+    /**
+     * Marcador más probable usando el modelo de torneo (triple-blend + xG + DC por fase).
+     */
+    public static Score mostLikelyScoreTournament(String homeTeam, EloRating home,
+                                                  String awayTeam, EloRating away,
+                                                  double homeBonus, Stage stage) {
+        double[][] m = scoreMatrixTournament(homeTeam, home, awayTeam, away, homeBonus, stage);
         int bH = 0, bA = 0; double best = -1;
         for (int h = 0; h <= MAX_GOALS; h++)
             for (int a = 0; a <= MAX_GOALS; a++)

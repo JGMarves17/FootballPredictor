@@ -34,13 +34,14 @@ class StrategyOptimizerTest {
 
     @Test
     void optimizerReturnsOnePredictionPerMatch() {
-        List<StrategyOptimizer.StrategyMatch> matches = List.of(
-                new StrategyOptimizer.StrategyMatch("Spain", r(2074), "Bolivia", r(1480), 0.0),
-                new StrategyOptimizer.StrategyMatch("France", r(2040), "Ecuador", r(1650), 0.0)
+        List<FastStrategyOptimizer.StrategyMatch> matches = List.of(
+                new FastStrategyOptimizer.StrategyMatch("Spain", r(2074), "Bolivia", r(1480), 0.0),
+                new FastStrategyOptimizer.StrategyMatch("France", r(2040), "Ecuador", r(1650), 0.0)
         );
 
-        StrategyOptimizer.OptimizationResult result = StrategyOptimizer.optimize(
-                matches, standings(), rivals(), Stage.GRUPOS, 2, 500, 42L);
+        FastStrategyOptimizer.OptimizationResult result = FastStrategyOptimizer.optimize(
+                matches, standings(), rivals(), Stage.GRUPOS, 2, 500, 42L,
+                FastStrategyOptimizer.Objective.EXPECTED_PAYOUT);
 
         assertNotNull(result);
         assertEquals(matches.size(), result.predictions().size());
@@ -49,14 +50,16 @@ class StrategyOptimizerTest {
 
     @Test
     void optimizerIsDeterministicWithSameSeed() {
-        List<StrategyOptimizer.StrategyMatch> matches = List.of(
-                new StrategyOptimizer.StrategyMatch("Spain", r(2074), "Bolivia", r(1480), 0.0)
+        List<FastStrategyOptimizer.StrategyMatch> matches = List.of(
+                new FastStrategyOptimizer.StrategyMatch("Spain", r(2074), "Bolivia", r(1480), 0.0)
         );
 
-        StrategyOptimizer.OptimizationResult r1 = StrategyOptimizer.optimize(
-                matches, standings(), rivals(), Stage.GRUPOS, 2, 1000, 99L);
-        StrategyOptimizer.OptimizationResult r2 = StrategyOptimizer.optimize(
-                matches, standings(), rivals(), Stage.GRUPOS, 2, 1000, 99L);
+        FastStrategyOptimizer.OptimizationResult r1 = FastStrategyOptimizer.optimize(
+                matches, standings(), rivals(), Stage.GRUPOS, 2, 1000, 99L,
+                FastStrategyOptimizer.Objective.EXPECTED_PAYOUT);
+        FastStrategyOptimizer.OptimizationResult r2 = FastStrategyOptimizer.optimize(
+                matches, standings(), rivals(), Stage.GRUPOS, 2, 1000, 99L,
+                FastStrategyOptimizer.Objective.EXPECTED_PAYOUT);
 
         assertEquals(r1.pPodio(), r2.pPodio(), 1e-9);
         assertEquals(r1.predictions().get(0).homeGoals(), r2.predictions().get(0).homeGoals());
@@ -64,12 +67,13 @@ class StrategyOptimizerTest {
 
     @Test
     void pPodioIsInValidRange() {
-        List<StrategyOptimizer.StrategyMatch> matches = List.of(
-                new StrategyOptimizer.StrategyMatch("Spain", r(2074), "Morocco", r(1880), 0.0)
+        List<FastStrategyOptimizer.StrategyMatch> matches = List.of(
+                new FastStrategyOptimizer.StrategyMatch("Spain", r(2074), "Morocco", r(1880), 0.0)
         );
 
-        StrategyOptimizer.OptimizationResult result = StrategyOptimizer.optimize(
-                matches, standings(), rivals(), Stage.GRUPOS, 3, 1000, 42L);
+        FastStrategyOptimizer.OptimizationResult result = FastStrategyOptimizer.optimize(
+                matches, standings(), rivals(), Stage.GRUPOS, 3, 1000, 42L,
+                FastStrategyOptimizer.Objective.EXPECTED_PAYOUT);
 
         assertTrue(result.pPodio() >= 0.0 && result.pPodio() <= 1.0);
         assertTrue(result.p1st() + result.p2nd() + result.p3rd() <= 1.0 + 1e-9);

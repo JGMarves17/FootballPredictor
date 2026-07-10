@@ -101,7 +101,8 @@ public final class MetaSimulator {
                 double bonus = isHost ? 75.0 : 0.0;
 
                 // Simular resultado real
-                double[][] matrix = PoissonPredictor.scoreMatrix(home, away, bonus);
+                double[][] matrix = PoissonPredictor.scoreMatrixTournament(
+                        m.homeTeam, home, m.awayTeam, away, bonus, stage);
                 var actual = GroupSimulator.sampleScore(matrix, rng);
                 int actualSign = Integer.compare(actual.homeGoals(), actual.awayGoals());
 

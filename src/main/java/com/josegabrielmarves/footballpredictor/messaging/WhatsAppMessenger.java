@@ -6,7 +6,7 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer;
-import com.josegabrielmarves.footballpredictor.quiniela.StrategyOptimizer;
+import com.josegabrielmarves.footballpredictor.quiniela.FastStrategyOptimizer;
 
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
@@ -82,8 +82,8 @@ public final class WhatsAppMessenger {
      */
     public static String buildMessage(int jornada,
                                       List<MatchdayEngine.MatchInput> matchday,
-                                      StrategyOptimizer.OptimizationResult opt,
-                                      List<StrategyOptimizer.StrategyMatch> strategyMatches) {
+                                      FastStrategyOptimizer.OptimizationResult opt,
+                                      List<FastStrategyOptimizer.StrategyMatch> strategyMatches) {
         StringBuilder sb = new StringBuilder();
         sb.append("⚽ *PREDICCIONES JORNADA ").append(jornada).append("*\n");
         sb.append("📅 ").append(java.time.LocalDate.now()).append("\n");
@@ -95,7 +95,7 @@ public final class WhatsAppMessenger {
 
         for (int i = 0; i < matchday.size(); i++) {
             MatchdayEngine.MatchInput m = matchday.get(i);
-            StrategyOptimizer.StrategyMatch sm = strategyMatches.get(i);
+            FastStrategyOptimizer.StrategyMatch sm = strategyMatches.get(i);
             double bonus = MatchdayEngine.hostBonus(m.team1());
             Score p = opt.predictions().get(i);
             MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), bonus);

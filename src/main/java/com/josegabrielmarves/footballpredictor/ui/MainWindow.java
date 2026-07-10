@@ -12,6 +12,8 @@ import com.josegabrielmarves.footballpredictor.messaging.WhatsAppMessenger;
 import com.josegabrielmarves.footballpredictor.prediction.RestDaysFactor;
 import com.josegabrielmarves.footballpredictor.quiniela.MatchEV;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRunnerV2;
+import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer;
+import com.josegabrielmarves.footballpredictor.quiniela.StageDetector;
 import com.josegabrielmarves.footballpredictor.ui.theme.AppTheme;
 import com.josegabrielmarves.footballpredictor.ui.StandingsPane;
 
@@ -38,14 +40,15 @@ import java.util.*;
 public class MainWindow extends BorderPane {
 
     private static final String[] COLS =
-        {"Local", "Visitante", "Fecha", "Grupo / Ronda", "Resultado", "Seguro", "Exacto arriesgado", "Riesgo"};
+        {"Local", "Visitante", "Fecha", "Grupo / Ronda", "Resultado", "Resultado Real (API)", "Seguro", "Exacto arriesgado", "Riesgo"};
 
     private static class MatchRow {
         final SimpleStringProperty homeTeam = new SimpleStringProperty();
         final SimpleStringProperty awayTeam = new SimpleStringProperty();
         final SimpleStringProperty date     = new SimpleStringProperty();
         final SimpleStringProperty group    = new SimpleStringProperty();
-        final SimpleStringProperty score    = new SimpleStringProperty();
+        final SimpleStringProperty score    = new SimpleStringProperty();           // marcador actual (si se editó manualmente)
+        final SimpleStringProperty realScore = new SimpleStringProperty();          // marcador oficial de la API
         final SimpleStringProperty seguro   = new SimpleStringProperty();
         final SimpleStringProperty exacto   = new SimpleStringProperty();
         final SimpleStringProperty riesgo   = new SimpleStringProperty();
@@ -113,9 +116,10 @@ public class MainWindow extends BorderPane {
                 case 2 -> d.getValue().date;
                 case 3 -> d.getValue().group;
                 case 4 -> d.getValue().score;
-                case 5 -> d.getValue().seguro;
-                case 6 -> d.getValue().exacto;
-                case 7 -> d.getValue().riesgo;
+                case 5 -> d.getValue().realScore;
+                case 6 -> d.getValue().seguro;
+                case 7 -> d.getValue().exacto;
+                case 8 -> d.getValue().riesgo;
                 default -> null;
             });
             if (ci == 2) {
@@ -169,7 +173,8 @@ public class MainWindow extends BorderPane {
         matrixPane = new MatrixPane();
 
         // ── EnsemblePredictor con mercado ──
-        ensemblePredictor = new EnsemblePredictor();
+        String apiKey = System.getenv("ODDS_API_KEY");
+        ensemblePredictor = new EnsemblePredictor(apiKey);
 
         // ── Tab 4: WhatsApp Preview ──
         whatsappArea = new TextArea();
@@ -254,20 +259,16 @@ public class MainWindow extends BorderPane {
             // Inicializar factor de descanso con partidos ya jugados
             RestDaysFactor.initialize(loadedMatches);
 
-            // Filtrar solo partidos NO jugados (sin marcador) para la tabla
-            List<Match> upcoming = loadedMatches.stream()
-                    .filter(m -> m.score == null)
-                    .toList();
-
-            populateTable(upcoming);
+            // Mostrar TODOS los partidos en la tabla (jugados + pendientes)
+            populateTable(loadedMatches);
             // El bracket necesita TODOS los partidos (jugados + pendientes)
             // para calcular posiciones de grupo y cruces
             bracketView.setMatches(loadedMatches, buildRatings());
-            matrixPane.setData(upcoming, buildRatings());
+            matrixPane.setData(loadedMatches.stream().filter(m -> m.score == null).toList(), buildRatings());
             btnPredict.setDisable(false);
 
             int total = loadedMatches.size();
-            int pendientes = upcoming.size();
+            int pendientes = (int) loadedMatches.stream().filter(m -> m.score == null).count();
             int jugados = total - pendientes;
             statusLabel.setText(pendientes + " partidos pendientes de " + total + " totales (" + jugados + " ya jugados)");
         });
@@ -283,7 +284,8 @@ public class MainWindow extends BorderPane {
             r.awayTeam.set(m.awayTeam);
             r.date.set(m.date);
             r.group.set(m.group != null ? m.group : m.status);
-            r.score.set(m.score != null ? m.score.toString() : "—");
+            r.score.set(m.score != null ? m.score.toString() : "—");           // tu marcador (editable futuro)
+            r.realScore.set(m.score != null ? m.score.toString() : "Pendiente"); // marcador oficial API
             r.seguro.set("—");
             r.exacto.set("—");
             r.riesgo.set("—");
@@ -308,11 +310,12 @@ public class MainWindow extends BorderPane {
                     EloRating a = ratings.getOrDefault(m.awayTeam, EloRating.initial(m.awayTeam));
                     double bonus = isHost(m.homeTeam) ? EloCalculator.HOME_ADVANTAGE : 0;
                     // Usar dualPickWithMarket para incluir odds
+                    QuinielaScorer.Stage stage = StageDetector.detect(m);
                     MatchEV.DualPick pick = MatchEV.dualPickWithMarket(
-                            m.homeTeam, h, m.awayTeam, a, bonus, ensemblePredictor);
+                            m.homeTeam, h, m.awayTeam, a, bonus, stage, ensemblePredictor);
                     lastPicks.add(pick);
-                    String seg = String.format("%d-%d (%.0f%%)", pick.seguro().homeGoals(), pick.seguro().awayGoals(), pick.pSeguro() * 100);
-                    String exc = String.format("%d-%d (%.0f%%)", pick.exacto().homeGoals(), pick.exacto().awayGoals(), pick.pExacto() * 100);
+                    String seg = String.format("%d-%d (%.2f%%)", pick.seguro().homeGoals(), pick.seguro().awayGoals(), pick.pSeguro() * 100);
+                    String exc = String.format("%d-%d (%.2f%%)", pick.exacto().homeGoals(), pick.exacto().awayGoals(), pick.pExacto() * 100);
                     int fi = idx++;
                     Platform.runLater(() -> {
                         MatchRow r = tableData.get(fi);
@@ -391,9 +394,9 @@ public class MainWindow extends BorderPane {
             msg.append("🏟️ *").append(m.homeTeam).append("* vs *").append(m.awayTeam).append("*\n");
             msg.append("   📊 ").append(pick.resultLabel()).append("\n");
             msg.append("   🎯 Seguro (1pt): ").append(pick.seguro().homeGoals()).append("-").append(pick.seguro().awayGoals());
-            msg.append("  (").append(String.format("%.0f%%", pick.pSeguro()*100)).append(")\n");
+            msg.append("  (").append(String.format("%.2f%%", pick.pSeguro()*100)).append(")\n");
             msg.append("   🎲 Exacto (3pts): ").append(pick.exacto().homeGoals()).append("-").append(pick.exacto().awayGoals());
-            msg.append("  (").append(String.format("%.0f%%", pick.pExacto()*100)).append(")\n");
+            msg.append("  (").append(String.format("%.2f%%", pick.pExacto()*100)).append(")\n");
             msg.append("   ").append(pick.risk().label);
 
             // Recomendación: cuándo arriesgar el exacto vs ir por el seguro

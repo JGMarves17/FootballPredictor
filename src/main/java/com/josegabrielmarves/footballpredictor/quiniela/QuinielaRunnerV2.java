@@ -10,7 +10,9 @@ import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaScorer.Stage;
 import com.josegabrielmarves.footballpredictor.rivals.*;
+import com.josegabrielmarves.footballpredictor.quiniela.StandingsLoader;
 
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -85,44 +87,10 @@ public final class QuinielaRunnerV2 {
                 updater.matchesRecorded());
 
         // ── 4. CLASIFICACIÓN ACTUAL (REAL — 29-jun, R32 completado) ──────
-        Map<String, Integer> standings = new LinkedHashMap<>();
-        standings.put(StandingsSimulator.US,  59);   // Gabriel Marves
-        standings.put("Rodrigo Lopez",        67);
-        standings.put("Jason Avila",          63);
-        standings.put("Ruben Figueroa",       73);
-        standings.put("Nissy Rodriguez",      64);
-        standings.put("Daniel Ortiz",         69);
-        standings.put("Cristhian Brito",      72);
-        standings.put("Carlos Guevara",        0);
-        standings.put("Hector Cerrato",       68);
-        standings.put("Alfredo Funez",        58);
-        standings.put("Jose Pozadas",         65);
-        standings.put("Carlos Davis",         56);
-        standings.put("Daniel Rivera",        43);
-        standings.put("Moises Chavarria",     72);
-        standings.put("Luis Flores",          59);
-        standings.put("Manuel Molina",        57);
-        standings.put("Jorge Brand",          65);
+        Map<String, Integer> standings = StandingsLoader.load();
 
-        // ── 5. PERFILES DE RIVALES ────────────────────────────────────────────
-        List<RivalProfile> rivals = List.of(
-                new RivalProfile("Rodrigo Lopez",     RivalProfile.Type.FAVORITE),
-                new RivalProfile("Daniel Ortiz",      RivalProfile.Type.RANDOM),
-                new RivalProfile("Nissy Rodriguez",   RivalProfile.Type.RANDOM),
-                new RivalProfile("Ruben Figueroa",    RivalProfile.Type.CONSERVATIVE),
-                new RivalProfile("Jason Avila",       RivalProfile.Type.FAVORITE),
-                new RivalProfile("Cristhian Brito",   RivalProfile.Type.FAVORITE),
-                new RivalProfile("Carlos Guevara",    RivalProfile.Type.CONSERVATIVE),
-                new RivalProfile("Luis Flores",       RivalProfile.Type.FAVORITE),
-                new RivalProfile("Manuel Molina",     RivalProfile.Type.CONSERVATIVE),
-                new RivalProfile("Alfredo Funez",     RivalProfile.Type.RANDOM),
-                new RivalProfile("Carlos Davis",      RivalProfile.Type.CONSERVATIVE),
-                new RivalProfile("Jose Pozadas",      RivalProfile.Type.CONSERVATIVE),
-                new RivalProfile("Daniel Rivera",     RivalProfile.Type.FAVORITE),
-                new RivalProfile("Moises Chavarria",  RivalProfile.Type.RANDOM),
-                new RivalProfile("Hector Cerrato",    RivalProfile.Type.CONSERVATIVE),
-                new RivalProfile("Jorge Brand",       RivalProfile.Type.RANDOM)
-        );
+        // ── 5. PERFILES DE RIVALES (desde JSON, no hardcodeados) ──────────────────
+        List<RivalProfile> rivals = RivalLoader.load();
 
         // ── 6. PARTIDOS DE LA JORNADA ─────────────────────────────────────────
         // ⚠️  Sin bonus hardcodeado — MatchdayEngine.hostBonus() lo calcula solo
@@ -147,7 +115,8 @@ public final class QuinielaRunnerV2 {
             double bonus = MatchdayEngine.hostBonus(m.team1());
             EloRating h = ratings.getOrDefault(m.team1(), EloRating.initial(m.team1()));
             EloRating a = ratings.getOrDefault(m.team2(), EloRating.initial(m.team2()));
-            var score = PoissonPredictor.mostLikelyScore(h, a, bonus);
+            // Use tournament model with correct stage
+            var score = PoissonPredictor.mostLikelyScoreTournament(m.team1(), h, m.team2(), a, bonus, m.stage());
             ourPredictions.put(m.team1() + " vs " + m.team2(),
                     new int[]{score.homeGoals(), score.awayGoals()});
         }
@@ -156,12 +125,12 @@ public final class QuinielaRunnerV2 {
                 remaining, ratings, ourPredictions, standings, rivals, 10_000, 2026L);
         meta.print();
 
-        // ── 9. StrategyOptimizer ──────────────────────────────────────────────
+        // ── 9. FastStrategyOptimizer (CRN, rápido) ──────────────────────────────
         System.out.println("[5/6] Optimizando estrategia...");
-        List<StrategyOptimizer.StrategyMatch> strategyMatches = new ArrayList<>();
+        List<FastStrategyOptimizer.StrategyMatch> strategyMatches = new ArrayList<>();
         for (MatchdayEngine.MatchInput m : matchday) {
             double bonus = MatchdayEngine.hostBonus(m.team1());
-            strategyMatches.add(new StrategyOptimizer.StrategyMatch(
+            strategyMatches.add(new FastStrategyOptimizer.StrategyMatch(
                     m.team1(),
                     ratings.getOrDefault(m.team1(), EloRating.initial(m.team1())),
                     m.team2(),
@@ -171,8 +140,9 @@ public final class QuinielaRunnerV2 {
         }
 
         long t0 = System.currentTimeMillis();
-        StrategyOptimizer.OptimizationResult opt = StrategyOptimizer.optimize(
-                strategyMatches, standings, rivals, Stage.DIECISEISAVOS, 3, 5_000, 2026L);
+        FastStrategyOptimizer.OptimizationResult opt = FastStrategyOptimizer.optimize(
+                strategyMatches, standings, rivals, Stage.DIECISEISAVOS, 3, 5_000, 2026L,
+                FastStrategyOptimizer.Objective.EXPECTED_PAYOUT);
         System.out.printf("[6/6] Listo en %.1fs%n", (System.currentTimeMillis()-t0)/1000.0);
 
         opt.print(strategyMatches);
