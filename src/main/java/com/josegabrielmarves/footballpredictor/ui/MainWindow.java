@@ -40,7 +40,7 @@ import java.util.*;
 public class MainWindow extends BorderPane {
 
     private static final String[] COLS =
-        {"Local", "Visitante", "Fecha", "Grupo / Ronda", "Resultado", "Resultado Real (API)", "Seguro", "Exacto arriesgado", "Riesgo"};
+        {"Local", "Visitante", "Fecha", "Grupo / Ronda", "Acertado", "Resultado Real (API)", "Seguro", "Exacto arriesgado", "Riesgo"};
 
     private static class MatchRow {
         final SimpleStringProperty homeTeam = new SimpleStringProperty();
@@ -52,6 +52,8 @@ public class MainWindow extends BorderPane {
         final SimpleStringProperty seguro   = new SimpleStringProperty();
         final SimpleStringProperty exacto   = new SimpleStringProperty();
         final SimpleStringProperty riesgo   = new SimpleStringProperty();
+        final SimpleStringProperty acertado = new SimpleStringProperty();           // NUEVO: Sí/No/Pendiente
+        final SimpleStringProperty realResult = new SimpleStringProperty();         // NUEVO: "1"/"X"/"2" del resultado real
     }
 
     private final ObservableList<MatchRow> tableData = FXCollections.observableArrayList();
@@ -67,6 +69,7 @@ public class MainWindow extends BorderPane {
     private final EnsemblePredictor ensemblePredictor;
     private List<Match> loadedMatches;
     private List<MatchEV.DualPick> lastPicks; // para el boton WhatsApp
+    private Label summaryLabel; // NUEVO: referencia al label de resumen
 
     public MainWindow() {
         setBackground(new Background(new BackgroundFill(AppTheme.BG(), CornerRadii.EMPTY, Insets.EMPTY)));
@@ -115,7 +118,7 @@ public class MainWindow extends BorderPane {
                 case 1 -> d.getValue().awayTeam;
                 case 2 -> d.getValue().date;
                 case 3 -> d.getValue().group;
-                case 4 -> d.getValue().score;
+                case 4 -> d.getValue().acertado;           // NUEVO: Acertado Sí/No
                 case 5 -> d.getValue().realScore;
                 case 6 -> d.getValue().seguro;
                 case 7 -> d.getValue().exacto;
@@ -214,10 +217,16 @@ public class MainWindow extends BorderPane {
         statusLabel.setTextFill(AppTheme.DIM());
         statusLabel.setFont(Font.font("Arial", 12));
 
-        HBox bottom = new HBox(10, statusLabel, new Region(), btnWhatsApp, btnPipeline, btnPredict);
+        // NUEVO: Label resumen aciertos
+        summaryLabel = new Label("Acertados: — | Fallos: — | Pendientes: —");
+        summaryLabel.setTextFill(AppTheme.ACCENT());
+        summaryLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+
+        HBox bottom = new HBox(10, statusLabel, new Region(), summaryLabel, new Region(), btnWhatsApp, btnPipeline, btnPredict);
         bottom.setPadding(new Insets(8, 10, 8, 10));
         bottom.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(bottom.getChildren().get(1), Priority.ALWAYS);
+        HBox.setHgrow(bottom.getChildren().get(3), Priority.ALWAYS);
 
         btnPredict.setOnAction(e -> generatePredictions());
         btnPipeline.setOnAction(e -> runPipeline());
@@ -284,11 +293,24 @@ public class MainWindow extends BorderPane {
             r.awayTeam.set(m.awayTeam);
             r.date.set(m.date);
             r.group.set(m.group != null ? m.group : m.status);
-            r.score.set(m.score != null ? m.score.toString() : "—");           // tu marcador (editable futuro)
-            r.realScore.set(m.score != null ? m.score.toString() : "Pendiente"); // marcador oficial API
+            r.score.set(m.score != null ? m.score.toString() : "—");
+            r.realScore.set(m.score != null ? m.score.toString() : "Pendiente");
             r.seguro.set("—");
             r.exacto.set("—");
             r.riesgo.set("—");
+
+            // NUEVO: Calcular resultado real 1X2 y guardar para comparación posterior
+            if (m.score != null) {
+                int hg = m.score.homeGoals();
+                int ag = m.score.awayGoals();
+                String realRes = hg > ag ? "1" : (hg == ag ? "X" : "2");
+                r.realResult.set(realRes);
+                r.acertado.set("—"); // Se calculará cuando generen predicciones
+            } else {
+                r.realResult.set("");
+                r.acertado.set("Pendiente");
+            }
+
             tableData.add(r);
         }
     }
@@ -322,6 +344,18 @@ public class MainWindow extends BorderPane {
                         r.seguro.set(seg);
                         r.exacto.set(exc);
                         r.riesgo.set(pick.risk().label);
+
+                        // NUEVO: Calcular Acertado (Sí/No) comparando resultado predicho vs real
+                        if (!r.realResult.get().isEmpty()) {
+                            // Resultado predicho = el del "Seguro" (pick.seguro())
+                            int predH = pick.seguro().homeGoals();
+                            int predA = pick.seguro().awayGoals();
+                            String predRes = predH > predA ? "1" : (predH == predA ? "X" : "2");
+                            String acertado = predRes.equals(r.realResult.get()) ? "✅ Sí" : "❌ No";
+                            r.acertado.set(acertado);
+                        } else {
+                            r.acertado.set("Pendiente");
+                        }
                     });
                 }
                 return null;
@@ -334,6 +368,16 @@ public class MainWindow extends BorderPane {
             buildWhatsAppPreview();
             statusLabel.setText("Predicciones generadas — ✅ Revisa la pestaña '📱 WhatsApp Preview'");
             tabs.getSelectionModel().select(3);
+
+            // NUEVO: Contar aciertos/fallos y actualizar summaryLabel
+            int aciertos = 0, fallos = 0, pendientes = 0;
+            for (MatchRow r : tableData) {
+                String a = r.acertado.get();
+                if (a.equals("✅ Sí")) aciertos++;
+                else if (a.equals("❌ No")) fallos++;
+                else pendientes++;
+            }
+            summaryLabel.setText(String.format("✅ %d aciertos  |  ❌ %d fallos  |  ⏳ %d pendientes", aciertos, fallos, pendientes));
         });
         new Thread(t).start();
     }

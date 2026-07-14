@@ -2,7 +2,6 @@ package com.josegabrielmarves.footballpredictor.ui;
 
 import com.josegabrielmarves.footballpredictor.api.BracketApiClient;
 import com.josegabrielmarves.footballpredictor.model.Match;
-import com.josegabrielmarves.footballpredictor.prediction.elo.EloCalculator;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.ui.theme.AppTheme;
 
@@ -52,15 +51,6 @@ public class BracketView extends VBox {
         "Group I", "Group J", "Group K", "Group L"
     };
 
-    private static final String[][] LEFT_R32 = {
-        {"1E", "3ABCDF"}, {"1I", "3CDFGH"}, {"2A", "2B"}, {"1F", "2C"},
-        {"1C", "2F"}, {"2E", "2I"}, {"1A", "3CEFHI"}, {"1L", "3EHIJK"}
-    };
-    private static final String[][] RIGHT_R32 = {
-        {"2K", "2L"}, {"1H", "2J"}, {"1D", "3BEFIJ"}, {"1G", "3AEHIJ"},
-        {"1J", "2H"}, {"2D", "2G"}, {"1B", "3EFGIJ"}, {"1K", "3DEIJL"}
-    };
-
     private record TeamRow(String name, int played, int pts, int gf, int ga) {
         int gd() {
             return gf - ga;
@@ -71,10 +61,8 @@ public class BracketView extends VBox {
 
     private final Map<String, List<TeamRow>> groupData = new LinkedHashMap<>();
     private Map<String, EloRating> ratings = new HashMap<>();
-    private final List<BracketMatch> leftMatches  = new ArrayList<>();
-    private final List<BracketMatch> rightMatches = new ArrayList<>();
     private final GridPane groupsGrid = new GridPane();
-    private String predictedChampion = "?";
+    private String predictedChampion = "TBD";
 
     private static final int CARD_W = 300, CARD_H = 130;
     private static final int HGAP = 12, VGAP = 10, PAD = 16;
@@ -100,6 +88,16 @@ public class BracketView extends VBox {
     private final AnchorPane bracketPane = new AnchorPane();
     private final BracketApiClient bracketApi = new BracketApiClient();
     private ScheduledExecutorService refresher;
+
+    // Bracket real por ronda (desde API con placeholders resueltos)
+    private List<BracketMatch> realR32Left = new ArrayList<>();
+    private List<BracketMatch> realR32Right = new ArrayList<>();
+    private List<BracketMatch> realR16Left = new ArrayList<>();
+    private List<BracketMatch> realR16Right = new ArrayList<>();
+    private List<BracketMatch> realQFLeft = new ArrayList<>();
+    private List<BracketMatch> realQFRight = new ArrayList<>();
+    private List<BracketMatch> realSF = new ArrayList<>();
+    private List<BracketMatch> realFinal = new ArrayList<>();
 
     public BracketView(MainWindow owner) {
         setSpacing(0);
@@ -128,6 +126,16 @@ public class BracketView extends VBox {
         // Auto-refresh cada 6 horas
         refresher = Executors.newSingleThreadScheduledExecutor();
         refresher.scheduleAtFixedRate(() -> Platform.runLater(this::refreshBracket), 6, 6, TimeUnit.HOURS);
+
+        // NUEVO: Hacer clic en el título para refrescar manualmente
+        tt.setOnMouseClicked(e -> refreshNow());
+        sub.setOnMouseClicked(e -> refreshNow());
+        setOnMouseClicked(e -> refreshNow()); // Clic en cualquier parte del VBox
+    }
+
+    // NUEVO: Método público para forzar actualización inmediata (botón manual)
+    public void refreshNow() {
+        Platform.runLater(this::refreshBracket);
     }
 
     public void setMatches(List<Match> ms, Map<String, EloRating> r) {
@@ -151,46 +159,99 @@ public class BracketView extends VBox {
     }
 
     /**
-     * Carga el bracket REAL desde la API de openfootball.
-     * Reemplaza la prediccion con datos reales.
+     * Carga el bracket REAL completo desde la API de openfootball.
+     * NO predice nada. Si un partido no está jugado → TBD.
      */
     private void refreshBracket() {
         try {
             bracketApi.refresh();
-            var full = bracketApi.getFullBracket();
+            Map<String, List<BracketApiClient.BracketMatch>> full = bracketApi.getFullBracket();
 
-            leftMatches.clear();
-            rightMatches.clear();
+            // Log detallado
+            full.forEach((round, matches) ->
+                System.out.printf("[BracketView] API round: '%s' → %d matches%n", round, matches.size()));
 
-            // R32 — datos reales
+            // Limpiar listas anteriores
+            realR32Left.clear(); realR32Right.clear();
+            realR16Left.clear(); realR16Right.clear();
+            realQFLeft.clear(); realQFRight.clear();
+            realSF.clear(); realFinal.clear();
+
+            // R32 — separar en izquierda/derecha (8+8)
             List<BracketApiClient.BracketMatch> r32 = full.getOrDefault("Round of 32", List.of());
             if (r32.isEmpty()) {
-                // Fallback a prediccion si no hay datos
-                predictBracket();
+                System.err.println("[BracketView] ⚠️ R32 vacío — mostrando TBD");
                 return;
             }
-
             int half = r32.size() / 2;
             for (int i = 0; i < r32.size(); i++) {
                 BracketApiClient.BracketMatch bm = r32.get(i);
-                String w = bm.isPlayed() ? bm.winner() : "?";
-                BracketMatch bm2 = new BracketMatch(bm.team1(), bm.team2(), w, 1.0);
-                if (i < half) leftMatches.add(bm2);
-                else rightMatches.add(bm2);
+                if (i < half) realR32Left.add(apiToBracketMatch(bm, true, true));
+                else          realR32Right.add(apiToBracketMatch(bm, false, true));
             }
 
-            // Campeon real (si la final ya se jugo)
-            List<BracketApiClient.BracketMatch> finals = full.getOrDefault("Final", List.of());
-            if (!finals.isEmpty() && finals.get(0).isPlayed()) {
-                predictedChampion = finals.get(0).winner();
-            } else {
-                predictedChampion = "? (en juego)";
+            // R16 — 4 izquierda, 4 derecha
+            List<BracketApiClient.BracketMatch> r16 = full.getOrDefault("Round of 16", List.of());
+            int r16Half = r16.size() / 2;
+            for (int i = 0; i < r16.size(); i++) {
+                BracketApiClient.BracketMatch bm = r16.get(i);
+                if (i < r16Half) realR16Left.add(apiToBracketMatch(bm, false, false));
+                else             realR16Right.add(apiToBracketMatch(bm, false, false));
             }
+
+            // QF — 2 izquierda, 2 derecha
+            List<BracketApiClient.BracketMatch> qf = full.getOrDefault("Quarter-final", List.of());
+            int qfHalf = qf.size() / 2;
+            for (int i = 0; i < qf.size(); i++) {
+                BracketApiClient.BracketMatch bm = qf.get(i);
+                if (i < qfHalf) realQFLeft.add(apiToBracketMatch(bm, false, false));
+                else            realQFRight.add(apiToBracketMatch(bm, false, false));
+            }
+
+            // SF — 2 partidos (101, 102)
+            List<BracketApiClient.BracketMatch> sf = full.getOrDefault("Semi-final", List.of());
+            for (BracketApiClient.BracketMatch bm : sf) {
+                realSF.add(apiToBracketMatch(bm, false, false));
+            }
+
+            // Final
+            List<BracketApiClient.BracketMatch> finalMatch = full.getOrDefault("Final", List.of());
+            for (BracketApiClient.BracketMatch bm : finalMatch) {
+                realFinal.add(apiToBracketMatch(bm, false, false));
+            }
+
+            // Campeón
+            if (!realFinal.isEmpty() && realFinal.get(0).winner != null
+                    && !realFinal.get(0).winner.equals("?")) {
+                predictedChampion = realFinal.get(0).winner;
+            } else {
+                predictedChampion = "TBD";
+            }
+
+            System.out.printf("[BracketView] ✅ Cargado: R32 L=%d R=%d, R16 L=%d R=%d, QF L=%d R=%d, SF=%d, Final=%d%n",
+                realR32Left.size(), realR32Right.size(),
+                realR16Left.size(), realR16Right.size(),
+                realQFLeft.size(), realQFRight.size(),
+                realSF.size(), realFinal.size());
 
         } catch (Exception e) {
             System.err.println("[BracketView] API error: " + e.getMessage());
-            predictBracket(); // fallback
+            e.printStackTrace();
+            // Sin fallback de predicción — todo queda TBD
         }
+    }
+
+    /**
+     * Convierte un BracketMatch de la API a nuestro BracketMatch interno.
+     * Resuelve placeholders no resueltos a "TBD".
+     */
+    private BracketMatch apiToBracketMatch(BracketApiClient.BracketMatch bm, boolean isLeft, boolean isR32) {
+        String t1 = displayName(bm.team1());
+        String t2 = displayName(bm.team2());
+        String w = bm.isPlayed() ? bm.winner() : "?";
+        if (w != null) w = displayName(w);
+        else w = "?";
+        return new BracketMatch(t1, t2, w, 1.0);
     }
 
     private void computeGroupData(List<Match> matches) {
@@ -233,61 +294,13 @@ public class BracketView extends VBox {
         }
     }
 
-    private void predictBracket() {
-        leftMatches.clear();
-        rightMatches.clear();
-        List<String[][]> sides = List.of(LEFT_R32, RIGHT_R32);
-        List<List<BracketMatch>> out = List.of(leftMatches, rightMatches);
-        for (int si = 0; si < 2; si++) {
-            for (String[] spec : sides.get(si)) {
-                String t1 = resolveSpec(spec[0]);
-                String t2 = resolveSpec(spec[1]);
-                String winner = predictWinner(t1, t2);
-                double conf = winnerConfidence(t1, t2, winner);
-                out.get(si).add(new BracketMatch(t1, t2, winner, conf));
-            }
-        }
-        predictedChampion = simulateRounds(leftMatches, rightMatches);
-    }
-
-    private String simulateRounds(List<BracketMatch> left, List<BracketMatch> right) {
-        List<String> l = advanceRound(left);
-        List<String> r = advanceRound(right);
-        List<String> ql = advanceStr(l);
-        List<String> qr = advanceStr(r);
-        String sfL = predictWinner(ql.get(0), ql.get(1));
-        String sfR = predictWinner(qr.get(0), qr.get(1));
-        return predictWinner(sfL, sfR);
-    }
-
-    private List<String> advanceRound(List<BracketMatch> matches) {
-        List<String> winners = new ArrayList<>();
-        for (int i = 0; i < matches.size(); i += 2) {
-            winners.add(predictWinner(matches.get(i).winner, matches.get(i + 1).winner));
-        }
-        return winners;
-    }
-
-    private List<String> advanceStr(List<String> teams) {
-        List<String> out = new ArrayList<>();
-        for (int i = 0; i < teams.size(); i += 2)
-            out.add(predictWinner(teams.get(i), teams.get(i + 1)));
-        return out;
-    }
-
-    private String predictWinner(String t1, String t2) {
-        if (t1 == null || t2 == null || t1.equals("?") || t2.equals("?")) return "?";
-        EloRating r1 = ratings.getOrDefault(t1, EloRating.initial(t1));
-        EloRating r2 = ratings.getOrDefault(t2, EloRating.initial(t2));
-        return EloCalculator.calculateExpectedScore(r1.rating(), r2.rating(), 0) >= 0.5 ? t1 : t2;
-    }
-
-    private double winnerConfidence(String t1, String t2, String winner) {
-        if (winner.equals("?") || t1.equals("?") || t2.equals("?")) return 0.5;
-        EloRating r1 = ratings.getOrDefault(t1, EloRating.initial(t1));
-        EloRating r2 = ratings.getOrDefault(t2, EloRating.initial(t2));
-        double p = EloCalculator.calculateExpectedScore(r1.rating(), r2.rating(), 0);
-        return winner.equals(t1) ? p : 1 - p;
+    /**
+     * Muestra el nombre real del equipo o "TBD" si es placeholder sin resolver.
+     */
+    private String displayName(String team) {
+        if (team == null || team.isEmpty()) return "TBD";
+        if (team.matches("^[WL]\\d+$")) return "TBD"; // W73, L101, etc.
+        return team;
     }
 
     private void renderGroups() {
@@ -300,7 +313,7 @@ public class BracketView extends VBox {
             }
 
         // Actualizar o agregar label de campeon/bracket
-        boolean hasRealChamp = !predictedChampion.contains("?");
+        boolean hasRealChamp = !"TBD".equals(predictedChampion);
         String sepText = hasRealChamp
                 ? "🏆 CAMPEÓN:  " + predictedChampion
                 : "⏳ ELIMINATORIAS — bracket en vivo";
@@ -322,9 +335,13 @@ public class BracketView extends VBox {
         renderBracket();
     }
 
+    /**
+     * Renderiza el bracket COMPLETO usando datos reales de la API.
+     * Sin predicciones — partidos no jugados muestran "TBD".
+     */
     private void renderBracket() {
         bracketContainer.getChildren().clear();
-        if (leftMatches.isEmpty()) return;
+        if (realR32Left.isEmpty() && realR32Right.isEmpty()) return;
 
         Label title = new Label("FASE ELIMINATORIA — RESULTADOS EN VIVO");
         title.setTextFill(AppTheme.GOLD());
@@ -339,6 +356,7 @@ public class BracketView extends VBox {
         bracketPane.setStyle("-fx-background-color: #0F1217;");
         bracketPane.getChildren().clear();
 
+        // ── Labels de ronda ──
         double labelTopY = TOP_Y - 4;
         addRoundLabel("R32", R32_LEFT, labelTopY);
         addRoundLabel("R16", R16_LEFT, labelTopY);
@@ -350,41 +368,49 @@ public class BracketView extends VBox {
         addRoundLabel("R16", R16_RIGHT, labelTopY);
         addRoundLabel("R32", R32_RIGHT, labelTopY);
 
-        for (int i = 0; i < leftMatches.size(); i++) {
-            BracketMatch bm = leftMatches.get(i);
-            bracketPane.getChildren().add(createBracketCard(bm, R32_LEFT, TOP_Y + i * SLOT));
-        }
+        // ── LADO IZQUIERDO ──
 
-        List<String> r16L = advanceRound(leftMatches);
-        for (int i = 0; i < r16L.size(); i++)
-            bracketPane.getChildren().add(createTeamLabel(r16L.get(i), R16_LEFT, TOP_Y + (i * 2 + 0.5) * SLOT - BH / 2));
+        // R32 Izq — 8 cards
+        for (int i = 0; i < realR32Left.size(); i++)
+            bracketPane.getChildren().add(createBracketCard(realR32Left.get(i), R32_LEFT, TOP_Y + i * SLOT));
 
-        List<String> qfL = advanceStr(r16L);
-        for (int i = 0; i < qfL.size(); i++)
-            bracketPane.getChildren().add(createTeamLabel(qfL.get(i), QF_LEFT, TOP_Y + (i * 4 + 1) * SLOT - BH / 2));
+        // R16 Izq — 4 cards (posicionadas entre pares de R32)
+        for (int i = 0; i < realR16Left.size(); i++)
+            bracketPane.getChildren().add(createBracketCard(realR16Left.get(i), R16_LEFT, TOP_Y + (i * 2 + 0.5) * SLOT - BH / 2));
 
-        String sfL = predictWinner(qfL.get(0), qfL.get(1));
-        bracketPane.getChildren().add(createTeamLabel(sfL, SF_LEFT, TOP_Y + 3.5 * SLOT - BH / 2));
+        // QF Izq — 2 cards
+        for (int i = 0; i < realQFLeft.size(); i++)
+            bracketPane.getChildren().add(createBracketCard(realQFLeft.get(i), QF_LEFT, TOP_Y + (i * 4 + 1) * SLOT - BH / 2));
 
-        for (int i = 0; i < rightMatches.size(); i++) {
-            BracketMatch bm = rightMatches.get(i);
-            bracketPane.getChildren().add(createBracketCard(bm, R32_RIGHT, TOP_Y + i * SLOT));
-        }
+        // SF Izq — 1 card (match 101)
+        if (!realSF.isEmpty())
+            bracketPane.getChildren().add(createBracketCard(realSF.get(0), SF_LEFT, TOP_Y + 3.5 * SLOT - BH / 2));
 
-        List<String> r16R = advanceRound(rightMatches);
-        for (int i = 0; i < r16R.size(); i++)
-            bracketPane.getChildren().add(createTeamLabel(r16R.get(i), R16_RIGHT, TOP_Y + (i * 2 + 0.5) * SLOT - BH / 2));
+        // ── LADO DERECHO ──
 
-        List<String> qfR = advanceStr(r16R);
-        for (int i = 0; i < qfR.size(); i++)
-            bracketPane.getChildren().add(createTeamLabel(qfR.get(i), QF_RIGHT, TOP_Y + (i * 4 + 1) * SLOT - BH / 2));
+        // R32 Der — 8 cards
+        for (int i = 0; i < realR32Right.size(); i++)
+            bracketPane.getChildren().add(createBracketCard(realR32Right.get(i), R32_RIGHT, TOP_Y + i * SLOT));
 
-        String sfR = predictWinner(qfR.get(0), qfR.get(1));
-        bracketPane.getChildren().add(createTeamLabel(sfR, SF_RIGHT, TOP_Y + 3.5 * SLOT - BH / 2));
+        // R16 Der — 4 cards
+        for (int i = 0; i < realR16Right.size(); i++)
+            bracketPane.getChildren().add(createBracketCard(realR16Right.get(i), R16_RIGHT, TOP_Y + (i * 2 + 0.5) * SLOT - BH / 2));
 
-        String champion = predictWinner(sfL, sfR);
-        bracketPane.getChildren().add(createChampionLabel(champion, FINAL_X, TOP_Y + 3.5 * SLOT - 14));
+        // QF Der — 2 cards
+        for (int i = 0; i < realQFRight.size(); i++)
+            bracketPane.getChildren().add(createBracketCard(realQFRight.get(i), QF_RIGHT, TOP_Y + (i * 4 + 1) * SLOT - BH / 2));
 
+        // SF Der — 1 card (match 102)
+        if (realSF.size() > 1)
+            bracketPane.getChildren().add(createBracketCard(realSF.get(1), SF_RIGHT, TOP_Y + 3.5 * SLOT - BH / 2));
+
+        // ── FINAL y CAMPEÓN ──
+        if (!realFinal.isEmpty())
+            bracketPane.getChildren().add(createBracketCard(realFinal.get(0), FINAL_X, TOP_Y + 3.5 * SLOT - BH / 2));
+
+        bracketPane.getChildren().add(createChampionLabel(predictedChampion, FINAL_X, TOP_Y + 3.5 * SLOT + BH / 2 + 6));
+
+        // ── Conectores ──
         drawConLines();
 
         bracketContainer.getChildren().add(bracketPane);
@@ -416,18 +442,41 @@ public class BracketView extends VBox {
         }
     }
 
+    /**
+     * Conectores del LADO DERECHO del bracket: expansión de nFrom → nTo cards.
+     * Cada card fuente se ramifica en (nTo/nFrom) cards destino.
+     * Usa las posiciones Y reales de cada ronda para alinearse con las cards dibujadas.
+     */
     private void drawSideLinesR(double xStart, double xEnd, double top, int nFrom, int nTo) {
-        double stepFrom = SLOT * nFrom;
-        for (int i = 0; i < nFrom; i += 2) {
-            double y1 = top + (i / 2) * stepFrom + BH / 2;
-            double y2 = top + ((i + 1) / 2) * stepFrom + BH / 2;
-            double yM = (y1 + y2) / 2;
-            double midX = (xStart + xEnd) / 2;
-            addLine(xStart, y1, midX, y1);
-            addLine(xStart, y2, midX, y2);
-            addLine(midX, y1, midX, y2);
-            addLine(midX, yM, xEnd, yM);
+        double[] yFrom = bracketCenters(top, nFrom);
+        double[] yTo   = bracketCenters(top, nTo);
+        int ratio = nTo / nFrom;
+        double midX = (xStart + xEnd) / 2;
+        for (int j = 0; j < nFrom; j++) {
+            double yM = yFrom[j];
+            double y1 = yTo[j * ratio];
+            double y2 = yTo[j * ratio + (ratio > 1 ? ratio - 1 : 0)];
+            addLine(xStart, yM, midX, yM);
+            if (Math.abs(y2 - y1) > 0.5) {
+                addLine(midX, y1, midX, y2);
+                addLine(midX, y1, xEnd, y1);
+                addLine(midX, y2, xEnd, y2);
+            } else {
+                addLine(midX, yM, xEnd, yM);
+            }
         }
+    }
+
+    /** Centros Y de las cards de cada ronda según cómo las posiciona renderBracket(). */
+    private double[] bracketCenters(double top, int n) {
+        double[] c = new double[n];
+        switch (n) {
+            case 1 -> c[0] = top + 3.5 * SLOT;
+            case 2 -> { c[0] = top + SLOT; c[1] = top + 5 * SLOT; }
+            case 4 -> { for (int i = 0; i < 4; i++) c[i] = top + (i * 2 + 0.5) * SLOT; }
+            default -> { for (int i = 0; i < n; i++) c[i] = top + i * SLOT + BH / 2.0; }
+        }
+        return c;
     }
 
     private void addLine(double x1, double y1, double x2, double y2) {
@@ -441,6 +490,8 @@ public class BracketView extends VBox {
         String t1 = shorten(bm.t1, 16);
         String t2 = shorten(bm.t2, 16);
         String winner = bm.winner;
+        boolean isTBD1 = "TBD".equals(bm.t1);
+        boolean isTBD2 = "TBD".equals(bm.t2);
 
         VBox card = new VBox(0);
         card.setLayoutX(x);
@@ -452,13 +503,13 @@ public class BracketView extends VBox {
         row1.setPadding(new Insets(1, 6, 0, 6));
 
         Label l1 = new Label(t1);
-        l1.setTextFill(t1.equals(winner) ? Color.WHITE : AppTheme.DIM());
-        l1.setFont(Font.font("Arial", t1.equals(winner) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
+        l1.setTextFill(isTBD1 ? AppTheme.DIM() : (t1.equals(winner) ? Color.WHITE : AppTheme.DIM()));
+        l1.setFont(Font.font("Arial", (!isTBD1 && t1.equals(winner)) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
         l1.setPrefWidth(BW - 70);
 
         Label l2 = new Label(t2);
-        l2.setTextFill(t2.equals(winner) ? Color.WHITE : AppTheme.DIM());
-        l2.setFont(Font.font("Arial", t2.equals(winner) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
+        l2.setTextFill(isTBD2 ? AppTheme.DIM() : (t2.equals(winner) ? Color.WHITE : AppTheme.DIM()));
+        l2.setFont(Font.font("Arial", (!isTBD2 && t2.equals(winner)) ? FontWeight.BOLD : FontWeight.NORMAL, 9));
         l2.setPrefWidth(BW - 70);
 
         row1.getChildren().addAll(l1, new Label(), l2);
@@ -467,9 +518,17 @@ public class BracketView extends VBox {
         HBox row2 = new HBox();
         row2.setPadding(new Insets(0, 6, 1, 6));
         row2.getChildren().add(new Label());
-        String confStr = winner.equals("?") ? "?" : String.format("%.0f%%", bm.confidence * 100);
-        Label conf = new Label("→ " + winner + " (" + confStr + ")");
-        conf.setTextFill(AppTheme.ACCENT());
+
+        String confStr;
+        if (isTBD1 && isTBD2) {
+            confStr = "Pendiente";
+        } else if (winner.equals("?")) {
+            confStr = "Pendiente";
+        } else {
+            confStr = winner;
+        }
+        Label conf = new Label(confStr);
+        conf.setTextFill(winner.equals("?") ? AppTheme.DIM() : AppTheme.ACCENT());
         conf.setFont(Font.font("Arial", FontWeight.BOLD, 9));
         conf.setAlignment(Pos.CENTER_RIGHT);
         HBox.setHgrow(conf, Priority.ALWAYS);
@@ -502,20 +561,23 @@ public class BracketView extends VBox {
     }
 
     private Node createChampionLabel(String champ, double x, double y) {
+        boolean isTBD = "TBD".equals(champ);
         VBox box = new VBox();
         box.setLayoutX(x);
         box.setLayoutY(y);
         box.setPrefSize(BW, 40);
-        box.setStyle("-fx-background-color: #2A2010; -fx-background-radius: 6; -fx-border-color: #FFD700; -fx-border-radius: 6; -fx-border-width: 2;");
+        box.setStyle(isTBD
+            ? "-fx-background-color: #1A1E28; -fx-background-radius: 6; -fx-border-color: #3A4152; -fx-border-radius: 6; -fx-border-width: 1;"
+            : "-fx-background-color: #2A2010; -fx-background-radius: 6; -fx-border-color: #FFD700; -fx-border-radius: 6; -fx-border-width: 2;");
 
-        Label l1 = new Label("CAMPEON");
-        l1.setTextFill(AppTheme.GOLD());
+        Label l1 = new Label("CAMPEÓN");
+        l1.setTextFill(isTBD ? AppTheme.DIM() : AppTheme.GOLD());
         l1.setFont(Font.font("Arial", FontWeight.BOLD, 9));
         l1.setAlignment(Pos.CENTER);
         l1.setMaxWidth(Double.MAX_VALUE);
 
         Label l2 = new Label(shorten(champ, 18));
-        l2.setTextFill(Color.WHITE);
+        l2.setTextFill(isTBD ? AppTheme.DIM() : Color.WHITE);
         l2.setFont(Font.font("Arial", FontWeight.BOLD, 12));
         l2.setAlignment(Pos.CENTER);
         l2.setMaxWidth(Double.MAX_VALUE);
@@ -615,35 +677,6 @@ public class BracketView extends VBox {
             Tooltip.install(card, new Tooltip(tip.toString()));
         }
         return card;
-    }
-
-    private String resolveSpec(String spec) {
-        if (spec == null) return "?";
-        if (spec.length() > 1 && spec.charAt(0) == '3') return bestThird(spec.substring(1));
-        if (spec.length() == 2 && Character.isDigit(spec.charAt(0))) {
-            int pos = spec.charAt(0) - '0';
-            List<TeamRow> st = groupData.get("Group " + spec.charAt(1));
-            if (st != null && st.size() >= pos) return st.get(pos - 1).name();
-        }
-        return spec;
-    }
-
-    private String bestThird(String letters) {
-        String best = null;
-        int bestPts = -1;
-        double bestElo = -1;
-        for (char c : letters.toCharArray()) {
-            List<TeamRow> st = groupData.get("Group " + c);
-            if (st == null || st.size() < 3) continue;
-            TeamRow t = st.get(2);
-            double e = elo(t.name());
-            if (best == null || t.pts() > bestPts || (t.pts() == bestPts && e > bestElo)) {
-                best = t.name();
-                bestPts = t.pts();
-                bestElo = e;
-            }
-        }
-        return best != null ? best : "Mejor 3°";
     }
 
     private static Label txt(String s, double w, Color c) {

@@ -139,21 +139,18 @@ public final class PoissonPredictor {
         // 5. Ajuste por xG real del torneo (TournamentConditioner)
         TournamentConditioner cond = TournamentConditioner.getInstance();
         double[] adjusted = cond.adjustLambdas(homeTeam, lambdaH, awayTeam, lambdaA);
+        double[] postCond = adjusted.clone();
 
         // 6. Ajuste por altitud de la sede (México ~1,800m)
         adjusted = AltitudeFactor.adjustLambdas(adjusted[0], adjusted[1], homeTeam, awayTeam);
+        double[] postAlt = adjusted.clone();
 
         // 7. Ajuste por Head-to-Head histórico (desde results.json)
-        // Umbral bajado de 3 a 1: en Mundial la mayoría de pares tienen 0-2 partidos.
-        // HeadToHeadFactor ya aplica smooth fuerte (1 part=10%, 5+=100%) y clamp ±20%.
         if (h2h.matchesPlayed() >= 1) {
             adjusted[0] *= h2h.homeAdvantage();
             adjusted[1] *= h2h.awayAdvantage();
-            if (Math.abs(h2h.homeAdvantage() - 1.0) > 0.02) {
-                // COMENTADO PARA PRODUCCIÓN: System.out.printf("  [H2H] %s vs %s — local: %.3f, visit: %.3f (%d partidos)%n",
-                //         homeTeam, awayTeam, h2h.homeAdvantage(), h2h.awayAdvantage(), h2h.matchesPlayed());
-            }
         }
+        double[] postH2H = adjusted.clone();
 
         // 8. Ajuste por días de descanso
         double restFactor = RestDaysFactor.getHomeRestFactor(homeTeam, awayTeam, today());
@@ -163,6 +160,27 @@ public final class PoissonPredictor {
             System.out.printf("  [DESCANSO] %s vs %s — factor: %.3f%n",
                     homeTeam, awayTeam, restFactor);
         }
+
+        // ── DIAGNÓSTICO COMPLETO DEL PIPELINE DE LAMBDA ──
+        System.out.printf("  📊 [TRACE] %s vs %s%n", homeTeam, awayTeam);
+        System.out.printf("      Elo:      λ_H=%.3f  λ_A=%.3f%n", lEloH, lEloA);
+        System.out.printf("      Form:     λ_H=%.3f  λ_A=%.3f  (formH=%d matches, formA=%d)%n",
+                lFormH, lFormA, fH.matchesUsed(), fA.matchesUsed());
+        System.out.printf("      GLM:      λ_H=%.3f  λ_A=%.3f  (glmMatches=%d)%n",
+                lGlmH, lGlmA, glmMatches);
+        System.out.printf("      Pesos:    wElo=%.2f  wForm=%.2f  wGlm=%.2f%n", wElo, wForm, wGlm);
+        System.out.printf("      Blend:    λ_H=%.3f  λ_A=%.3f%n",
+                wElo * lEloH + wForm * lFormH + wGlm * lGlmH,
+                wElo * lEloA + wForm * lFormA + wGlm * lGlmA);
+        System.out.printf("      PostCond: λ_H=%.3f  λ_A=%.3f  (TournamentConditioner)%n",
+                postCond[0], postCond[1]);
+        System.out.printf("      PostAlt:  λ_H=%.3f  λ_A=%.3f  (Altitude)%n",
+                postAlt[0], postAlt[1]);
+        System.out.printf("      PostH2H:  λ_H=%.3f  λ_A=%.3f  (H2H hAdv=%.3f, aAdv=%.3f, %d partidos)%n",
+                postH2H[0], postH2H[1],
+                h2h.homeAdvantage(), h2h.awayAdvantage(), h2h.matchesPlayed());
+        System.out.printf("      FINAL:    λ_H=%.3f  λ_A=%.3f  (RestDays=%.3f)%n",
+                adjusted[0], adjusted[1], restFactor);
 
         return adjusted;
     }
@@ -259,6 +277,12 @@ public final class PoissonPredictor {
                                                    String awayTeam,  EloRating away,
                                                    double homeBonus, Stage stage) {
         double[] lambdas = expectedGoalsBlended(homeTeam, home, awayTeam, away, homeBonus, stage);
+
+        // ── DIAGNÓSTICO: Print lambdas justo antes de matrix ──
+        System.out.printf("  🎯 [LAMBDAS] %s vs %s — λ_home=%.3f  λ_away=%.3f  rho=%.3f  stage=%s%n",
+                homeTeam, awayTeam, lambdas[0], lambdas[1], rhoForStage(stage),
+                stage != null ? stage.name() : "null");
+
         return buildMatrix(lambdas[0], lambdas[1], rhoForStage(stage));
     }
 

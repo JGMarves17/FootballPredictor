@@ -65,8 +65,8 @@ public final class MatchEV {
      * [v2] Recomendación dual para la quiniela:
      *   seguro          → marcador del resultado más probable (alta P de acertar resultado)
      *   exacto          → marcador exacto con mayor probabilidad real (apunta a los 3 pts)
-     *   pExactoSeguro   → P del marcador seguro
-     *   pExactoArriesgado → P del marcador exacto pico
+     *   pSeguro         → P del resultado dominante (1X2), NO del marcador específico
+     *   pExacto         → P del marcador exacto pico
      *   risk            → nivel de confianza del resultado
      */
     public record DualPick(
@@ -185,11 +185,15 @@ public final class MatchEV {
                 : probs.awayWin() >= probs.draw() ? '2' : 'X';
 
         // Seguro: marcador más probable DENTRO del resultado dominante
-        int sh = 0, sa = 0; double pSeguro = -1;
+        // pResult = P(resultado dominante) = suma de todos los marcadores de ese resultado
+        int sh = 0, sa = 0; double pScoreSeguro = -1; double pResult = 0;
         for (int h = 0; h < m.length; h++)
             for (int a = 0; a < m[h].length; a++) {
                 char r = h > a ? '1' : h < a ? '2' : 'X';
-                if (r == winner && m[h][a] > pSeguro) { pSeguro = m[h][a]; sh = h; sa = a; }
+                if (r == winner) {
+                    pResult += m[h][a];
+                    if (m[h][a] > pScoreSeguro) { pScoreSeguro = m[h][a]; sh = h; sa = a; }
+                }
             }
 
         double best = Math.max(probs.homeWin(), Math.max(probs.draw(), probs.awayWin()));
@@ -199,7 +203,7 @@ public final class MatchEV {
         String label = winner == '1' ? homeTeam : winner == '2' ? awayTeam : "Empate";
         label = String.format("%s (%.0f%%)", label, best * 100);
 
-        return new DualPick(new Score(sh, sa), pSeguro,
+        return new DualPick(new Score(sh, sa), pResult,
                 new Score(eh, ea), pExacto, risk, label);
     }
 
@@ -233,11 +237,15 @@ public final class MatchEV {
                 : probs.awayWin() >= probs.draw() ? '2' : 'X';
 
         // Seguro: marcador más probable dentro del resultado dominante
-        int sh = 0, sa = 0; double pSeguro = -1;
+        // pResult = P(resultado dominante) = suma de todos los marcadores de ese resultado
+        int sh = 0, sa = 0; double pScoreSeguro = -1; double pResult = 0;
         for (int h = 0; h < m.length; h++)
             for (int a = 0; a < m[h].length; a++) {
                 char r = h > a ? '1' : h < a ? '2' : 'X';
-                if (r == winner && m[h][a] > pSeguro) { pSeguro = m[h][a]; sh = h; sa = a; }
+                if (r == winner) {
+                    pResult += m[h][a];
+                    if (m[h][a] > pScoreSeguro) { pScoreSeguro = m[h][a]; sh = h; sa = a; }
+                }
             }
 
         double best = Math.max(probs.homeWin(), Math.max(probs.draw(), probs.awayWin()));
@@ -247,7 +255,7 @@ public final class MatchEV {
         String label = winner == '1' ? homeTeam : winner == '2' ? awayTeam : "Empate";
         label = String.format("%s (%.0f%%)", label, best * 100);
 
-        return new DualPick(new Score(sh, sa), pSeguro,
+        return new DualPick(new Score(sh, sa), pResult,
                 new Score(eh, ea), pExacto, risk, label);
     }
 

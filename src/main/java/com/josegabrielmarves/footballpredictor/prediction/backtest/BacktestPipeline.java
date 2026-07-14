@@ -20,8 +20,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.*;
-import com.josegabrielmarves.footballpredictor.prediction.backtest.BacktestMetrics.Outcome;
-
 public final class BacktestPipeline {
 
     public record PipelineConfig(
@@ -204,7 +202,17 @@ public final class BacktestPipeline {
     }
 
     static double leagueToK(String leagueName) {
-        return HyperparameterOptimizer.leagueToK(leagueName);
+        if (leagueName == null) return EloCalculator.K_DEFAULT;
+        String l = leagueName.toLowerCase();
+        if (l.contains("world cup") && !l.contains("qual")) return EloCalculator.K_WORLD_CUP;
+        if (l.contains("qual"))                              return EloCalculator.K_QUALIFIER;
+        if (l.contains("copa america") || l.contains("euro championship")
+                || l.contains("asian cup") || l.contains("africa cup")
+                || l.contains("gold cup"))                  return EloCalculator.K_CONTINENTAL;
+        if (l.contains("nations league") || l.contains("nations cup"))
+                                                            return EloCalculator.K_NATIONS_LEAGUE;
+        if (l.contains("friendl"))                          return EloCalculator.K_FRIENDLY;
+        return EloCalculator.K_DEFAULT;
     }
 
     static List<HistoricalMatch> load(Path dataFile) {
