@@ -75,6 +75,11 @@ public final class MatchdayEngine {
 
         JsonArray jsonMatches = new JsonArray();
 
+        // EnsemblePredictor: ajusta la matriz hacia las odds reales del mercado
+        // (The Odds API) cuando están disponibles; si no hay odds, se comporta
+        // igual que el modelo puro (fallback transparente dentro de PoissonPredictor).
+        EnsemblePredictor ep = new EnsemblePredictor();
+
         for (int mi = 0; mi < matches.size(); mi++) {
             MatchInput m = matches.get(mi);
             // Usar la fecha específica del partido (o today como fallback)
@@ -86,14 +91,16 @@ public final class MatchdayEngine {
             EloRating away = ratings.getOrDefault(m.team2(),
                     CalibratedEloRatings.getRating(m.team2()));
 
-            ScoreMatrix matrix = ScoreMatrix.compute(
+            ScoreMatrix matrix = ScoreMatrix.computeWithMarket(
                     m.team1(), home, m.team2(), away,
-                    bonus, seed++, ScoreMatrix.DEFAULT_SIMS, m.stage());
+                    bonus, seed++, ScoreMatrix.DEFAULT_SIMS, m.stage(), ep);
             matrix.print();
 
-            // Predicción óptima para quiniela
-            MatchEV.Candidate optimal = MatchEV.best(home, away, bonus, m.stage());
-            MatchEV.Risk risk = MatchEV.risk(home, away, bonus);
+            // Predicción óptima para quiniela (modelo torneo + mercado)
+            MatchEV.Candidate optimal = MatchEV.bestTournamentWithMarket(
+                    m.team1(), home, m.team2(), away, bonus, m.stage(), ep);
+            MatchEV.Risk risk = MatchEV.riskTournamentWithMarket(
+                    m.team1(), home, m.team2(), away, bonus, m.stage(), ep);
 
             // JSON
             JsonObject jm = new JsonObject();
@@ -127,9 +134,8 @@ public final class MatchdayEngine {
         savePredictions(jornada, today, jsonMatches);
 
         // ── Comparación con mercado de apuestas ───────────────────────────────
-        System.out.println("\n📈 Solicitando odds de mercado (The Odds API)...");
+        System.out.println("\n📈 Comparando modelo vs. mercado (The Odds API)...");
         try {
-            var ep = new EnsemblePredictor();
             System.out.println("═".repeat(80));
             System.out.printf("  %-22s %-22s  %-16s  %-16s%n",
                     "Local", "Visitante", "Modelo", "Ensemble (α=0.15)");

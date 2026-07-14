@@ -420,6 +420,20 @@ public final class PoissonPredictor {
         return new Score(bH, bA);
     }
 
+    /**
+     * Marcador más probable usando el modelo de torneo ajustado al mercado de apuestas.
+     */
+    public static Score mostLikelyScoreTournamentWithMarket(String homeTeam, EloRating home,
+                                                  String awayTeam, EloRating away,
+                                                  double homeBonus, Stage stage, EnsemblePredictor ep) {
+        double[][] m = scoreMatrixTournamentWithMarket(homeTeam, home, awayTeam, away, homeBonus, stage, ep);
+        int bH = 0, bA = 0; double best = -1;
+        for (int h = 0; h <= MAX_GOALS; h++)
+            for (int a = 0; a <= MAX_GOALS; a++)
+                if (m[h][a] > best) { best = m[h][a]; bH = h; bA = a; }
+        return new Score(bH, bA);
+    }
+
     public static MatchProbabilities matchProbabilities(EloRating home, EloRating away,
                                                         double homeBonus) {
         return aggregateProbs(scoreMatrix(home, away, homeBonus));

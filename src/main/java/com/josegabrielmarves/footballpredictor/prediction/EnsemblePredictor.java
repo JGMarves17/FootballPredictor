@@ -36,15 +36,12 @@ public final class EnsemblePredictor {
 
     /**
      * Obtiene la API key desde la variable de entorno ODDS_API_KEY.
-     * Si no está definida, devuelve la clave por defecto (hardcodeada como fallback).
+     * Sin esa variable no hay acceso a odds de mercado — {@link OddsProvider}
+     * no se crea y el pipeline sigue funcionando solo con el modelo propio.
      */
     public static String getApiKey() {
         String envKey = System.getenv("ODDS_API_KEY");
-        if (envKey != null && !envKey.isBlank()) {
-            return envKey;
-        }
-        // Fallback a la clave hardcodeada (solo para desarrollo)
-        return "a1d46a53187e24d4f564000bb9319181";
+        return (envKey != null && !envKey.isBlank()) ? envKey : null;
     }
 
     /** Crea un EnsemblePredictor con la API key por defecto y alpha=0.15 (mercado pesado). */
@@ -157,18 +154,17 @@ public final class EnsemblePredictor {
     /**
      * Punto de entrada: muestra los partidos disponibles con odds
      * y sus probabilidades ensemble.
-     * API_KEY se pasa como argumento o se hardcodea aquí.
+     * API_KEY se pasa como argumento o se lee de la variable de entorno ODDS_API_KEY.
      */
     public static void main(String[] args) {
         String apiKey = args.length > 0 ? args[0]
                 : System.getenv("ODDS_API_KEY");
         if (apiKey == null || apiKey.isBlank()) {
-            apiKey = DEFAULT_API_KEY;
+            System.err.println("[EnsemblePredictor] Falta la API key. Define ODDS_API_KEY o pásala como argumento.");
+            return;
         }
         System.out.println("[EnsemblePredictor] API key activada desde " +
-                (args.length > 0 ? "argumento" :
-                        System.getenv("ODDS_API_KEY") != null ? "env ODDS_API_KEY" :
-                        "constante DEFAULT_API_KEY"));
+                (args.length > 0 ? "argumento" : "env ODDS_API_KEY"));
 
         OddsProvider odds = new OddsProvider(apiKey);
         System.out.println("Obteniendo odds del Mundial 2026...");

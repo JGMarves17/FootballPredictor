@@ -1,6 +1,7 @@
 package com.josegabrielmarves.footballpredictor.quiniela;
 
 import com.josegabrielmarves.footballpredictor.model.Score;
+import com.josegabrielmarves.footballpredictor.prediction.EnsemblePredictor;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
 import com.josegabrielmarves.footballpredictor.quiniela.QuinielaRanking.Tally;
@@ -140,6 +141,25 @@ public final class FastStrategyOptimizer {
             Stage stage,
             int topK, int sims, long seed,
             Objective objective) {
+        return optimize(matches, standings, rivals, stage, topK, sims, seed, objective, null);
+    }
+
+    /**
+     * Igual que {@link #optimize(List, Map, List, Stage, int, int, long, Objective)} pero,
+     * cuando se provee un {@link EnsemblePredictor} con odds de mercado disponibles, ajusta
+     * las matrices y el ranking de candidatos hacia las probabilidades implícitas del mercado
+     * (The Odds API) en vez de usar solo el modelo propio.
+     *
+     * @param ep EnsemblePredictor con acceso a odds, o {@code null} para usar solo el modelo
+     */
+    public static OptimizationResult optimize(
+            List<StrategyMatch> matches,
+            Map<String, Integer> standings,
+            List<RivalProfile> rivals,
+            Stage stage,
+            int topK, int sims, long seed,
+            Objective objective,
+            EnsemblePredictor ep) {
 
         if (matches.isEmpty()) {
             throw new IllegalArgumentException("No hay partidos para optimizar.");
@@ -153,20 +173,25 @@ public final class FastStrategyOptimizer {
         final int ptsExact  = QuinielaScorer.pointsExact(stage);
         final int numRivals = rivals.size();
 
-        // ── 1. Matrices Poisson ─────────────────────────────────────────────
+        // ── 1. Matrices Poisson (ajustadas a mercado si hay odds disponibles) ────
         double[][][] matrices = new double[M][][];
         for (int i = 0; i < M; i++) {
             StrategyMatch m = matches.get(i);
-            matrices[i] = PoissonPredictor.scoreMatrixTournament(
-                    m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage);
+            matrices[i] = ep != null
+                    ? PoissonPredictor.scoreMatrixTournamentWithMarket(
+                            m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage, ep)
+                    : PoissonPredictor.scoreMatrixTournament(
+                            m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage);
         }
 
-        // ── 2. Top-K candidatos por partido (modelo torneo: triple-blend + xG + GLM + H2H + Descanso) ──────────
+        // ── 2. Top-K candidatos por partido (modelo torneo: triple-blend + xG + GLM + H2H + Descanso + mercado) ──
         List<List<Score>> candidates = new ArrayList<>(M);
         for (int i = 0; i < M; i++) {
             StrategyMatch m = matches.get(i);
-            candidates.add(MatchEV.rankTournament(m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage)
-                    .stream().limit(topK).map(MatchEV.Candidate::score).toList());
+            List<MatchEV.Candidate> ranked = ep != null
+                    ? MatchEV.rankTournamentWithMarket(m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage, ep)
+                    : MatchEV.rankTournament(m.homeTeam(), m.home(), m.awayTeam(), m.away(), m.homeBonus(), stage);
+            candidates.add(ranked.stream().limit(topK).map(MatchEV.Candidate::score).toList());
         }
         int K = candidates.stream().mapToInt(List::size).min().orElse(topK);
 

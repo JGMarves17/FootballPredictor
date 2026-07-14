@@ -183,6 +183,12 @@ public final class QuinielaRunnerV2 {
                 new MatchdayEngine.MatchInput("France",       "Spain",       Stage.SEMIFINAL)
         );
 
+        // EnsemblePredictor único para todo el run: ajusta el modelo hacia las
+        // odds reales del mercado (The Odds API) cuando hay datos disponibles.
+        // Se reutiliza la misma instancia en todo el pipeline para que el
+        // caché de OddsProvider evite quemar créditos de la API.
+        EnsemblePredictor ep = new EnsemblePredictor();
+
         // ── 7. ScoreMatrix 500k por partido ──────────────────────────────────
         System.out.printf("%n[3/6] Generando matrices 500k simulaciones — jornada %d...%n", jornada);
         MatchdayEngine.preMatchday(jornada, matchday, ratings, LocalDate.now());
@@ -196,8 +202,9 @@ public final class QuinielaRunnerV2 {
             double bonus = MatchdayEngine.hostBonus(m.team1());
             EloRating h = ratings.getOrDefault(m.team1(), EloRating.initial(m.team1()));
             EloRating a = ratings.getOrDefault(m.team2(), EloRating.initial(m.team2()));
-            // Use tournament model with correct stage
-            var score = PoissonPredictor.mostLikelyScoreTournament(m.team1(), h, m.team2(), a, bonus, m.stage());
+            // Modelo torneo + mercado (odds reales cuando están disponibles)
+            var score = PoissonPredictor.mostLikelyScoreTournamentWithMarket(
+                    m.team1(), h, m.team2(), a, bonus, m.stage(), ep);
             ourPredictions.put(m.team1() + " vs " + m.team2(),
                     new int[]{score.homeGoals(), score.awayGoals()});
         }
@@ -223,7 +230,7 @@ public final class QuinielaRunnerV2 {
         long t0 = System.currentTimeMillis();
         FastStrategyOptimizer.OptimizationResult opt = FastStrategyOptimizer.optimize(
                 strategyMatches, standings, rivals, Stage.SEMIFINAL, 3, 5_000, 2026L,
-                FastStrategyOptimizer.Objective.EXPECTED_PAYOUT);
+                FastStrategyOptimizer.Objective.EXPECTED_PAYOUT, ep);
         System.out.printf("[6/6] Listo en %.1fs%n", (System.currentTimeMillis()-t0)/1000.0);
 
         opt.print(strategyMatches);
@@ -244,7 +251,7 @@ public final class QuinielaRunnerV2 {
 
         // ── 10. Mensaje WhatsApp ────────────────────────────────────────────────
         System.out.println("\n[📱] Generando mensaje para WhatsApp...");
-        String waMsg = WhatsAppMessenger.buildMessage(jornada, matchday, opt, strategyMatches);
+        String waMsg = WhatsAppMessenger.buildMessage(jornada, matchday, opt, strategyMatches, ep);
         // AUTO: intenta CallMeBot API, si falla → portapapeles (nunca pierdes el mensaje)
         WhatsAppMessenger.sendWithBot(waMsg);
     }

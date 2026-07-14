@@ -1,6 +1,7 @@
 package com.josegabrielmarves.footballpredictor.messaging;
 
 import com.josegabrielmarves.footballpredictor.model.Score;
+import com.josegabrielmarves.footballpredictor.prediction.EnsemblePredictor;
 import com.josegabrielmarves.footballpredictor.prediction.MatchdayEngine;
 import com.josegabrielmarves.footballpredictor.prediction.elo.EloRating;
 import com.josegabrielmarves.footballpredictor.prediction.poisson.PoissonPredictor;
@@ -79,11 +80,31 @@ public final class WhatsAppMessenger {
 
     /**
      * Construye el mensaje desde un OptimizationResult.
+     * Las probabilidades mostradas usan el modelo solo-Elo — preferir
+     * {@link #buildMessage(int, List, FastStrategyOptimizer.OptimizationResult, List, EnsemblePredictor)}
+     * para que el % mostrado sea consistente con el pick (torneo + mercado).
      */
     public static String buildMessage(int jornada,
                                       List<MatchdayEngine.MatchInput> matchday,
                                       FastStrategyOptimizer.OptimizationResult opt,
                                       List<FastStrategyOptimizer.StrategyMatch> strategyMatches) {
+        return buildMessage(jornada, matchday, opt, strategyMatches, null);
+    }
+
+    /**
+     * Construye el mensaje desde un OptimizationResult, mostrando las
+     * probabilidades del modelo de TORNEO ajustadas al mercado de apuestas
+     * (mismo modelo que generó los picks de {@code opt}), para que el %
+     * mostrado sea consistente con la predicción real.
+     *
+     * @param ep EnsemblePredictor con odds de mercado, o {@code null} para
+     *           usar solo el modelo de torneo (sin ajuste de mercado)
+     */
+    public static String buildMessage(int jornada,
+                                      List<MatchdayEngine.MatchInput> matchday,
+                                      FastStrategyOptimizer.OptimizationResult opt,
+                                      List<FastStrategyOptimizer.StrategyMatch> strategyMatches,
+                                      EnsemblePredictor ep) {
         StringBuilder sb = new StringBuilder();
         sb.append("⚽ *PREDICCIONES JORNADA ").append(jornada).append("*\n");
         sb.append("📅 ").append(java.time.LocalDate.now()).append("\n");
@@ -98,19 +119,31 @@ public final class WhatsAppMessenger {
             FastStrategyOptimizer.StrategyMatch sm = strategyMatches.get(i);
             double bonus = MatchdayEngine.hostBonus(m.team1());
             Score p = opt.predictions().get(i);
-            MatchEV.Risk riesgo = MatchEV.risk(sm.home(), sm.away(), bonus);
-            double pHome = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), bonus).homeWin();
-            double pDraw = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), bonus).draw();
-            double pAway = PoissonPredictor.matchProbabilities(sm.home(), sm.away(), bonus).awayWin();
+
+            MatchEV.Risk riesgo;
+            PoissonPredictor.MatchProbabilities probs;
+            if (ep != null) {
+                riesgo = MatchEV.riskTournamentWithMarket(
+                        m.team1(), sm.home(), m.team2(), sm.away(), bonus, m.stage(), ep);
+                probs = PoissonPredictor.matchProbabilitiesTournamentWithMarket(
+                        m.team1(), sm.home(), m.team2(), sm.away(), bonus, m.stage(), ep);
+            } else {
+                probs = PoissonPredictor.matchProbabilitiesTournament(
+                        m.team1(), sm.home(), m.team2(), sm.away(), bonus, m.stage());
+                double best = Math.max(probs.homeWin(), Math.max(probs.draw(), probs.awayWin()));
+                riesgo = best >= 0.65 ? MatchEV.Risk.FIJO : best >= 0.55 ? MatchEV.Risk.FUERTE
+                        : best >= 0.45 ? MatchEV.Risk.DOBLE : MatchEV.Risk.TRIPLE;
+            }
 
             sb.append("🏟️ *").append(m.team1()).append("* vs *").append(m.team2()).append("*\n");
-            sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%", pHome*100, pDraw*100, pAway*100)).append("\n");
+            sb.append("   📊 ").append(String.format("1=%.0f%% X=%.0f%% 2=%.0f%%",
+                    probs.homeWin()*100, probs.draw()*100, probs.awayWin()*100)).append("\n");
             sb.append("   🎯 *").append(p.homeGoals()).append("-").append(p.awayGoals()).append("*  (").append(riesgo.label).append(")\n");
             sb.append("\n");
         }
 
         sb.append("─".repeat(25)).append("\n");
-        sb.append("⚡ Optimizado por FootballPredictor\n");
+        sb.append("⚡ Optimizado por FootballPredictor").append(ep != null ? " + Mercado\n" : "\n");
         sb.append("📱 ").append(java.time.LocalDateTime.now()).append("\n");
 
         return sb.toString();

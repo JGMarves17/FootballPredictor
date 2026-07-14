@@ -99,6 +99,23 @@ public final class MatchEV {
         return buildCandidates(matrix, probs, stage);
     }
 
+    /**
+     * Ranking de candidatos usando el modelo de TORNEO ajustado al mercado de apuestas.
+     * Usa {@link PoissonPredictor#scoreMatrixTournamentWithMarket} para que la matriz
+     * (y por tanto el EV de cada marcador) refleje las odds reales cuando existen.
+     */
+    public static List<Candidate> rankTournamentWithMarket(String homeTeam, EloRating home,
+                                                            String awayTeam, EloRating away,
+                                                            double homeBonus, Stage stage,
+                                                            EnsemblePredictor ep) {
+        double[][] matrix = PoissonPredictor.scoreMatrixTournamentWithMarket(
+                homeTeam, home, awayTeam, away, homeBonus, stage, ep);
+        PoissonPredictor.MatchProbabilities probs =
+                PoissonPredictor.matchProbabilitiesTournamentWithMarket(
+                        homeTeam, home, awayTeam, away, homeBonus, stage, ep);
+        return buildCandidates(matrix, probs, stage);
+    }
+
     private static List<Candidate> buildCandidates(double[][] matrix,
                                                     PoissonPredictor.MatchProbabilities probs,
                                                     Stage stage) {
@@ -118,6 +135,18 @@ public final class MatchEV {
 
     public static Candidate best(EloRating home, EloRating away, double homeBonus, Stage stage) {
         return rank(home, away, homeBonus, stage).get(0);
+    }
+
+    /**
+     * Mejor candidato (mayor EV) usando el modelo de TORNEO ajustado al mercado.
+     * Preferir este método sobre {@link #best} para predicciones reales de quiniela:
+     * {@link #best} usa el modelo solo-Elo (sin xG/GLM/mercado).
+     */
+    public static Candidate bestTournamentWithMarket(String homeTeam, EloRating home,
+                                                      String awayTeam, EloRating away,
+                                                      double homeBonus, Stage stage,
+                                                      EnsemblePredictor ep) {
+        return rankTournamentWithMarket(homeTeam, home, awayTeam, away, homeBonus, stage, ep).get(0);
     }
 
     /**
@@ -290,6 +319,21 @@ public final class MatchEV {
     public static Risk risk(EloRating home, EloRating away, double homeBonus) {
         PoissonPredictor.MatchProbabilities probs =
                 PoissonPredictor.matchProbabilities(home, away, homeBonus);
+        double best = Math.max(probs.homeWin(), Math.max(probs.draw(), probs.awayWin()));
+        if (best >= 0.65) return Risk.FIJO;
+        if (best >= 0.55) return Risk.FUERTE;
+        if (best >= 0.45) return Risk.DOBLE;
+        return Risk.TRIPLE;
+    }
+
+    /** Nivel de riesgo usando el modelo de TORNEO ajustado al mercado. */
+    public static Risk riskTournamentWithMarket(String homeTeam, EloRating home,
+                                                 String awayTeam, EloRating away,
+                                                 double homeBonus, Stage stage,
+                                                 EnsemblePredictor ep) {
+        PoissonPredictor.MatchProbabilities probs =
+                PoissonPredictor.matchProbabilitiesTournamentWithMarket(
+                        homeTeam, home, awayTeam, away, homeBonus, stage, ep);
         double best = Math.max(probs.homeWin(), Math.max(probs.draw(), probs.awayWin()));
         if (best >= 0.65) return Risk.FIJO;
         if (best >= 0.55) return Risk.FUERTE;

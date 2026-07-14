@@ -33,6 +33,13 @@ public final class OddsProvider {
     private final String apiKey;
     private final Gson gson = new Gson();
 
+    // Caché en memoria de la respuesta cruda de la API: un pipeline puede
+    // consultar el mismo partido varias veces (modelo, EV, comparación con
+    // mercado...) y cada llamada HTTP consume 1 crédito del plan free
+    // (500/mes). Cachear evita quemar el cupo y acelera el pipeline.
+    private JsonArray gamesCache;
+    private boolean fetchFailed;
+
     public OddsProvider(String apiKey) {
         this.apiKey = apiKey;
     }
@@ -46,10 +53,9 @@ public final class OddsProvider {
      */
     public double[] getImpliedProbabilities(String homeTeam, String awayTeam) {
         try {
-            String json = fetchJson(ENDPOINT + apiKey);
-            if (json == null) return null;
+            JsonArray games = fetchGamesCached();
+            if (games == null) return null;
 
-            JsonArray games = gson.fromJson(json, JsonArray.class);
             for (JsonElement el : games) {
                 JsonObject game = el.getAsJsonObject();
                 String home = game.get("home_team").getAsString();
@@ -100,10 +106,9 @@ public final class OddsProvider {
     public List<OddsMatch> getAllMatches() {
         List<OddsMatch> result = new ArrayList<>();
         try {
-            String json = fetchJson(ENDPOINT + apiKey);
-            if (json == null) return result;
+            JsonArray games = fetchGamesCached();
+            if (games == null) return result;
 
-            JsonArray games = gson.fromJson(json, JsonArray.class);
             for (JsonElement el : games) {
                 JsonObject game = el.getAsJsonObject();
                 String home = game.get("home_team").getAsString();
@@ -127,6 +132,25 @@ public final class OddsProvider {
             double pHome, double pDraw, double pAway) {}
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Trae el array de partidos con odds, cacheado por instancia.
+     * Una sola llamada HTTP (1 crédito) sirve para todas las consultas de
+     * {@link #getImpliedProbabilities} y {@link #getAllMatches} durante la
+     * vida de este {@code OddsProvider} (normalmente, un run del pipeline).
+     */
+    private JsonArray fetchGamesCached() throws Exception {
+        if (gamesCache != null) return gamesCache;
+        if (fetchFailed) return null;
+
+        String json = fetchJson(ENDPOINT + apiKey);
+        if (json == null) {
+            fetchFailed = true;
+            return null;
+        }
+        gamesCache = gson.fromJson(json, JsonArray.class);
+        return gamesCache;
+    }
 
     /** Comparación flexible de nombres (ignora mayúsculas y acentos menores). */
     private boolean matchesTeam(String a, String b) {
